@@ -35,6 +35,22 @@ export function QuizPage () {
     const [feedbackText, setFeedbackText] = useState<string>('');
 
     const nextTimeoutRef = useRef<number | null>(null);
+    const answerInputRef = useRef<HTMLInputElement | null>(null);
+    
+    useEffect(() => {
+        if ((phase !== 'active') || (pausedAt != null)) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            answerInputRef.current?.focus();
+            answerInputRef.current?.select();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, currentIndex, pausedAt]);
 
     const currentQuestion = useMemo(() => {
         if (currentQuiz == null) {
@@ -427,6 +443,7 @@ export function QuizPage () {
                             <label>
                                 回答入力
                                 <input
+                                    ref={answerInputRef}
                                     className="input-control"
                                     type="text"
                                     value={inputValue}
