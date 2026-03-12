@@ -36,21 +36,7 @@ export function QuizPage () {
 
     const nextTimeoutRef = useRef<number | null>(null);
     const answerInputRef = useRef<HTMLInputElement | null>(null);
-    
-    useEffect(() => {
-        if ((phase !== 'active') || (pausedAt != null)) {
-            return;
-        }
-
-        const timerId = window.setTimeout(() => {
-            answerInputRef.current?.focus();
-            answerInputRef.current?.select();
-        }, 0);
-
-        return () => {
-            window.clearTimeout(timerId);
-        };
-    }, [phase, currentIndex, pausedAt]);
+    const isComposingRef = useRef<boolean>(false);
 
     const currentQuestion = useMemo(() => {
         if (currentQuiz == null) {
@@ -132,6 +118,64 @@ export function QuizPage () {
         };
     }, [phase, countdownValue]);
 
+    useEffect(() => {
+        if ((phase !== 'active') || (pausedAt != null)) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            answerInputRef.current?.focus();
+            answerInputRef.current?.select();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, currentIndex, pausedAt]);
+
+    const goToNextQuestionOrFinish = useCallback((nextAnswers: AnswerResult[]) => {
+        if (currentQuiz == null) {
+            return;
+        }
+
+        const isLastQuestion = ((currentIndex + 1) >= currentQuiz.questions.length);
+
+        if (isLastQuestion === true) {
+            const userName = (
+                users.find((user) => {
+                    return (user.id === currentQuiz.selectedUserId);
+                })?.name ?? 'ゲスト'
+            );
+
+            const result = buildQuizResult(
+                userName,
+                currentQuiz.settingsSnapshot,
+                nextAnswers
+            );
+
+            finishQuiz(result);
+            navigate('/result');
+            return;
+        }
+
+        setCurrentIndex((prev) => {
+            return (prev + 1);
+        });
+        setPhase('active');
+        setQuestionStartedAt(Date.now());
+        setPausedAt(null);
+        setPausedMs(0);
+        setNowTick(Date.now());
+        setFeedbackClassName('');
+        setFeedbackText('');
+    }, [
+        currentQuiz,
+        currentIndex,
+        users,
+        finishQuiz,
+        navigate,
+    ]);
+
     const handleSettleCurrentQuestion = useCallback((
         mode: 'submit' | 'timeout'
     ) => {
@@ -207,40 +251,7 @@ export function QuizPage () {
         }
 
         nextTimeoutRef.current = window.setTimeout(() => {
-            if (currentQuiz == null) {
-                return;
-            }
-
-            const isLastQuestion = ((currentIndex + 1) >= currentQuiz.questions.length);
-
-            if (isLastQuestion === true) {
-                const userName = (
-                    users.find((user) => {
-                        return (user.id === currentQuiz.selectedUserId);
-                    })?.name ?? 'ゲスト'
-                );
-
-                const result = buildQuizResult(
-                    userName,
-                    currentQuiz.settingsSnapshot,
-                    nextAnswers
-                );
-
-                finishQuiz(result);
-                navigate('/result');
-                return;
-            }
-
-            setCurrentIndex((prev) => {
-                return (prev + 1);
-            });
-            setPhase('active');
-            setQuestionStartedAt(Date.now());
-            setPausedAt(null);
-            setPausedMs(0);
-            setNowTick(Date.now());
-            setFeedbackClassName('');
-            setFeedbackText('');
+            goToNextQuestionOrFinish(nextAnswers);
         }, FEEDBACK_DISPLAY_MS);
     }, [
         currentQuiz,
@@ -250,10 +261,7 @@ export function QuizPage () {
         pausedMs,
         inputValue,
         answers,
-        currentIndex,
-        users,
-        finishQuiz,
-        navigate,
+        goToNextQuestionOrFinish,
     ]);
 
     useEffect(() => {
@@ -319,6 +327,11 @@ export function QuizPage () {
             return;
         }
 
+        if (nextTimeoutRef.current != null) {
+            window.clearTimeout(nextTimeoutRef.current);
+            nextTimeoutRef.current = null;
+        }
+
         const started = startQuiz();
 
         if (started === true) {
@@ -334,6 +347,11 @@ export function QuizPage () {
             return;
         }
 
+        if (nextTimeoutRef.current != null) {
+            window.clearTimeout(nextTimeoutRef.current);
+            nextTimeoutRef.current = null;
+        }
+
         clearQuiz();
         navigate('/');
     }
@@ -341,6 +359,34 @@ export function QuizPage () {
     function handleSubmit (event: React.FormEvent<HTMLFormElement>): void {
         event.preventDefault();
         handleSettleCurrentQuestion('submit');
+    }
+
+    function handleInputKeyDown (event: React.KeyboardEvent<HTMLInputElement>): void {
+        const paused = (pausedAt != null);
+
+        if (isComposingRef.current === true) {
+            return;
+        }
+
+        if (event.key !== 'Enter') {
+            return;
+        }
+
+        event.preventDefault();
+
+        if ((phase === 'active') && (paused === false)) {
+            handleSettleCurrentQuestion('submit');
+            return;
+        }
+
+        if (phase === 'feedback') {
+            if (nextTimeoutRef.current != null) {
+                window.clearTimeout(nextTimeoutRef.current);
+                nextTimeoutRef.current = null;
+            }
+
+            goToNextQuestionOrFinish(answers);
+        }
     }
 
     if ((currentQuiz == null) || (currentQuestion == null)) {
@@ -449,6 +495,33 @@ export function QuizPage () {
                                     value={inputValue}
                                     disabled={(phase !== 'active') || (paused === true)}
                                     placeholder="ここに答えを入力"
+                                    inputMode={
+                                        currentQuestion.answerKind === 'quotientRemainder'
+                                            ? 'text'
+                                            : (
+                                                currentQuestion.course === 'div' &&
+                                                currentQuestion.inputHint?.includes('小数') === true
+                                                    ? 'decimal'
+                                                    : 'numeric'
+                                            )
+                                    }
+                                    enterKeyHint="done"
+                                    autoComplete="off"
+                                    autoCapitalize="off"
+                                    spellCheck={false}
+                                    lang="en"
+                                    pattern={
+                                        currentQuestion.answerKind === 'quotientRemainder'
+                                            ? '[0-9\\- ]*'
+                                            : '[0-9\\-\\.]*'
+                                    }
+                                    onCompositionStart={() => {
+                                        isComposingRef.current = true;
+                                    }}
+                                    onCompositionEnd={() => {
+                                        isComposingRef.current = false;
+                                    }}
+                                    onKeyDown={handleInputKeyDown}
                                     onChange={(event) => {
                                         setInputValue(event.target.value);
                                     }}
