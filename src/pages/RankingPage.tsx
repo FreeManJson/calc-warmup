@@ -1,54 +1,62 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAppContext } from '../context/AppContext';
 
 export function RankingPage () {
+    const navigate = useNavigate();
+    const { ranking } = useAppContext();
+
     return (
         <div className="page-container">
             <h1>ランキング</h1>
 
             <section className="card">
-                <table className="result-table">
-                    <thead>
-                        <tr>
-                            <th>順位</th>
-                            <th>ユーザー</th>
-                            <th>スコア</th>
-                            <th>正答率</th>
-                            <th>平均時間</th>
-                            <th>コース</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>1</td>
-                            <td>息子</td>
-                            <td>980</td>
-                            <td>100%</td>
-                            <td>1800 ms</td>
-                            <td>足し算</td>
-                        </tr>
-                        <tr>
-                            <td>2</td>
-                            <td>息子</td>
-                            <td>920</td>
-                            <td>90%</td>
-                            <td>2200 ms</td>
-                            <td>引き算</td>
-                        </tr>
-                        <tr>
-                            <td>3</td>
-                            <td>お父さん</td>
-                            <td>850</td>
-                            <td>80%</td>
-                            <td>2600 ms</td>
-                            <td>掛け算</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {ranking.length <= 0 && (
+                    <p>まだランキングはありません。</p>
+                )}
+
+                {ranking.length > 0 && (
+                    <table className="result-table">
+                        <thead>
+                            <tr>
+                                <th>順位</th>
+                                <th>ユーザー</th>
+                                <th>コース</th>
+                                <th>スコア</th>
+                                <th>正答率</th>
+                                <th>平均時間</th>
+                                <th>日時</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            {ranking.map((entry, index) => {
+                                return (
+                                    <tr key={entry.id}>
+                                        <td>{index + 1}</td>
+                                        <td>{entry.userName}</td>
+                                        <td>{entry.courseLabel}</td>
+                                        <td>{entry.score}</td>
+                                        <td>{entry.accuracyRate}%</td>
+                                        <td>{entry.averageAnswerMs} ms</td>
+                                        <td>{entry.playedAt}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                )}
             </section>
 
             <section className="card">
                 <div className="button-row">
-                    <Link className="button-like" to="/">TOPへ戻る</Link>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            navigate('/');
+                        }}
+                    >
+                        TOPへ戻る
+                    </button>
                 </div>
             </section>
         </div>
