@@ -18,6 +18,7 @@ import {
 import type {
     CourseType,
     CurrentQuiz,
+    InputMethodType,
     QuizResult,
     QuizSettings,
     RankingEntry,
@@ -46,7 +47,7 @@ interface AppContextType {
     currentQuiz: CurrentQuiz | null;
     latestResult: QuizResult | null;
     ranking: RankingEntry[];
-    startQuiz: () => boolean;
+    startQuiz: (overrideSettings?: QuizSettings) => boolean;
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
     addUser: (name: string) => AddUserResult;
@@ -88,17 +89,26 @@ export function AppProvider (
     });
 
     const [settingsByUserId, setSettingsByUserId] = useState<Record<string, QuizSettings>>(() => {
-        const initialMap = buildInitialSettingsMap(
+        const baseUsers = (
             readJson<UserProfile[] | null>(STORAGE_KEYS.users, null) ?? DEFAULT_USERS
         );
-        const storedMap = readJson<Record<string, QuizSettings> | null>(
+        const initialMap = buildInitialSettingsMap(baseUsers);
+        const storedMap = readJson<Record<string, unknown> | null>(
             STORAGE_KEYS.settingsByUserId,
             null
         );
 
+        const normalizedStoredMap: Record<string, QuizSettings> = {};
+
+        if (storedMap != null) {
+            Object.keys(storedMap).forEach((userId) => {
+                normalizedStoredMap[userId] = normalizeQuizSettings(storedMap[userId]);
+            });
+        }
+
         return {
             ...initialMap,
-            ...(storedMap ?? {}),
+            ...normalizedStoredMap,
         };
     });
 
@@ -190,40 +200,30 @@ export function AppProvider (
                     ? nextValue(currentSettings)
                     : nextValue
             );
-            const normalizedCourses: CourseType[] = (
-                resolvedValue.selectedCourses.length > 0
-                    ? resolvedValue.selectedCourses
-                    : ['add']
-            );
+
+            const normalizedValue = normalizeQuizSettings(resolvedValue);
 
             return {
                 ...prevMap,
-                [selectedUserId]: {
-                    ...resolvedValue,
-                    selectedCourses: normalizedCourses,
-                },
+                [selectedUserId]: normalizedValue,
             };
         });
     }, [selectedUserId]);
 
-    const startQuiz = useCallback(() => {
-        const normalizedCourses: CourseType[] = (
-            quizSettings.selectedCourses.length > 0
-                ? quizSettings.selectedCourses
-                : ['add']
-        );
-
-        const snapshot: QuizSettings = {
-            ...quizSettings,
-            selectedCourses: [...normalizedCourses],
-            termMaxDigits: [...quizSettings.termMaxDigits],
-        };
-
+    const startQuiz = useCallback((overrideSettings?: QuizSettings) => {
+        const snapshot = normalizeQuizSettings(overrideSettings ?? quizSettings);
         const questions = generateQuestions(snapshot);
 
         if (questions.length <= 0) {
             return false;
         }
+
+        setSettingsByUserId((prevMap) => {
+            return {
+                ...prevMap,
+                [selectedUserId]: snapshot,
+            };
+        });
 
         setCurrentQuiz({
             id: `quiz-${Date.now()}`,
@@ -426,6 +426,140 @@ function buildInitialSettingsMap (users: UserProfile[]): Record<string, QuizSett
     });
 
     return initialMap;
+}
+
+function normalizeQuizSettings (raw: unknown): QuizSettings {
+    const defaults = createDefaultSettings();
+    const value = (typeof raw === 'object' && raw != null)
+        ? (raw as Partial<QuizSettings> & {
+            firstTermMaxDigits?: number;
+            secondTermMaxDigits?: number;
+        })
+        : {};
+
+    let termMaxDigits = Array.isArray(value.termMaxDigits)
+        ? value.termMaxDigits
+        : defaults.termMaxDigits;
+
+    if (Array.isArray(value.termMaxDigits) === false) {
+        const firstDigits = (
+            typeof value.firstTermMaxDigits === 'number'
+                ? value.firstTermMaxDigits
+                : 2
+        );
+        const secondDigits = (
+            typeof value.secondTermMaxDigits === 'number'
+                ? value.secondTermMaxDigits
+                : 2
+        );
+
+        termMaxDigits = defaults.termMaxDigits.map((_, index) => {
+            if (index === 0) {
+                return firstDigits;
+            }
+
+            return secondDigits;
+        });
+    }
+
+    const normalizedCourses = normalizeSelectedCourses(value.selectedCourses);
+    const normalizedInputMethod = normalizeInputMethod(value.inputMethod);
+
+    return {
+        selectedCourses: normalizedCourses,
+        maxTerms: (
+            typeof value.maxTerms === 'number'
+                ? value.maxTerms
+                : defaults.maxTerms
+        ),
+        termMaxDigits: defaults.termMaxDigits.map((defaultDigit, index) => {
+            const digit = termMaxDigits[index];
+            return (typeof digit === 'number' ? digit : defaultDigit);
+        }),
+        timeLimitEnabled: (
+            typeof value.timeLimitEnabled === 'boolean'
+                ? value.timeLimitEnabled
+                : defaults.timeLimitEnabled
+        ),
+        timeLimitSec: (
+            typeof value.timeLimitSec === 'number'
+                ? value.timeLimitSec
+                : defaults.timeLimitSec
+        ),
+        questionCount: (
+            typeof value.questionCount === 'number'
+                ? value.questionCount
+                : defaults.questionCount
+        ),
+        allowNegative: (
+            typeof value.allowNegative === 'boolean'
+                ? value.allowNegative
+                : defaults.allowNegative
+        ),
+        allowDecimal: (
+            typeof value.allowDecimal === 'boolean'
+                ? value.allowDecimal
+                : defaults.allowDecimal
+        ),
+        allowRemainder: (
+            typeof value.allowRemainder === 'boolean'
+                ? value.allowRemainder
+                : defaults.allowRemainder
+        ),
+        allowRealDivision: (
+            typeof value.allowRealDivision === 'boolean'
+                ? value.allowRealDivision
+                : defaults.allowRealDivision
+        ),
+        presetName: (
+            typeof value.presetName === 'string'
+                ? value.presetName
+                : defaults.presetName
+        ),
+        handwritingMemoEnabled: (
+            typeof value.handwritingMemoEnabled === 'boolean'
+                ? value.handwritingMemoEnabled
+                : defaults.handwritingMemoEnabled
+        ),
+        inputMethod: normalizedInputMethod,
+    };
+}
+
+function normalizeSelectedCourses (value: unknown): CourseType[] {
+    if (Array.isArray(value) === false) {
+        return ['add'];
+    }
+
+    const filtered = value.filter((item): item is CourseType => {
+        return isCourseType(item);
+    });
+
+    return (filtered.length > 0 ? filtered : ['add']);
+}
+
+function normalizeInputMethod (value: unknown): InputMethodType {
+    if (isInputMethodType(value) === true) {
+        return value;
+    }
+
+    return 'auto';
+}
+
+function isCourseType (value: unknown): value is CourseType {
+    return (
+        (value === 'add') ||
+        (value === 'sub') ||
+        (value === 'mul') ||
+        (value === 'div')
+    );
+}
+
+function isInputMethodType (value: unknown): value is InputMethodType {
+    return (
+        (value === 'auto') ||
+        (value === 'keyboard') ||
+        (value === 'tile')
+    );
 }
 
 function readJson<T> (key: string, fallback: T): T {

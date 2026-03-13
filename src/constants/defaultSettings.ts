@@ -21,6 +21,7 @@ export function createDefaultSettings (): QuizSettings {
         allowRealDivision: false,
         presetName: '高校基礎',
         handwritingMemoEnabled: false,
+        inputMethod: 'auto',
     };
 }
 

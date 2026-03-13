@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MAX_TERMS } from '../constants/appConstants';
 import { createFilledTermDigits } from '../constants/defaultSettings';
 import { useAppContext } from '../context/AppContext';
+import type { InputMethodType, QuizSettings } from '../types/appTypes';
 
 export function SettingsPage () {
     const navigate = useNavigate();
@@ -27,9 +28,8 @@ export function SettingsPage () {
     }, [quizSettings]);
 
     function handleStartWithCurrentSettings (): void {
-        commitAllInputs();
-
-        const started = startQuiz();
+        const nextSettings = commitAllInputs();
+        const started = startQuiz(nextSettings);
 
         if (started === false) {
             window.alert('コースを1つ以上選択してください。');
@@ -39,99 +39,62 @@ export function SettingsPage () {
         navigate('/quiz');
     }
 
-    function commitAllInputs (): void {
-        commitMaxTerms();
-        commitQuestionCount();
-        commitTimeLimitSec();
+    function commitAllInputs (): QuizSettings {
+        const nextSettings = buildCommittedSettings(quizSettings);
 
-        for (let lpIndex = 0; lpIndex < MAX_TERMS; lpIndex += 1) {
-            commitTermDigit(lpIndex);
-        }
+        setQuizSettings(nextSettings);
+        syncLocalInputs(nextSettings);
+
+        return nextSettings;
     }
 
-    function commitMaxTerms (): void {
-        const parsed = Number(maxTermsInput);
-        const nextValue = (
-            Number.isFinite(parsed) === true
-                ? parsed
-                : quizSettings.maxTerms
+    function buildCommittedSettings (base: QuizSettings): QuizSettings {
+        const nextMaxTerms = clampNumber(
+            maxTermsInput,
+            2,
+            MAX_TERMS,
+            base.maxTerms
         );
-        const clamped = Math.max(2, Math.min(MAX_TERMS, nextValue));
 
-        setQuizSettings((prev) => {
-            return {
-                ...prev,
-                maxTerms: clamped,
-            };
+        const nextQuestionCount = clampNumber(
+            questionCountInput,
+            1,
+            100,
+            base.questionCount
+        );
+
+        const nextTimeLimitSec = clampNumber(
+            timeLimitSecInput,
+            1,
+            300,
+            base.timeLimitSec
+        );
+
+        const nextTermDigits = createFilledTermDigits(2).map((_, index) => {
+            return clampNumber(
+                termDigitInputs[index] ?? '',
+                1,
+                9,
+                base.termMaxDigits[index] ?? 2
+            );
         });
 
-        setMaxTermsInput(String(clamped));
+        return {
+            ...base,
+            maxTerms: nextMaxTerms,
+            questionCount: nextQuestionCount,
+            timeLimitSec: nextTimeLimitSec,
+            termMaxDigits: nextTermDigits,
+        };
     }
 
-    function commitQuestionCount (): void {
-        const parsed = Number(questionCountInput);
-        const nextValue = (
-            Number.isFinite(parsed) === true
-                ? parsed
-                : quizSettings.questionCount
-        );
-        const clamped = Math.max(1, Math.min(100, nextValue));
-
-        setQuizSettings((prev) => {
-            return {
-                ...prev,
-                questionCount: clamped,
-            };
-        });
-
-        setQuestionCountInput(String(clamped));
-    }
-
-    function commitTimeLimitSec (): void {
-        const parsed = Number(timeLimitSecInput);
-        const nextValue = (
-            Number.isFinite(parsed) === true
-                ? parsed
-                : quizSettings.timeLimitSec
-        );
-        const clamped = Math.max(1, Math.min(300, nextValue));
-
-        setQuizSettings((prev) => {
-            return {
-                ...prev,
-                timeLimitSec: clamped,
-            };
-        });
-
-        setTimeLimitSecInput(String(clamped));
-    }
-
-    function commitTermDigit (index: number): void {
-        const raw = termDigitInputs[index] ?? '';
-        const parsed = Number(raw);
-        const currentValue = (quizSettings.termMaxDigits[index] ?? 2);
-        const nextValue = (
-            Number.isFinite(parsed) === true
-                ? parsed
-                : currentValue
-        );
-        const clamped = Math.max(1, Math.min(9, nextValue));
-
-        setQuizSettings((prev) => {
-            const nextDigits = [...prev.termMaxDigits];
-            nextDigits[index] = clamped;
-
-            return {
-                ...prev,
-                termMaxDigits: nextDigits,
-            };
-        });
-
-        setTermDigitInputs((prevInputs) => {
-            const nextInputs = [...prevInputs];
-            nextInputs[index] = String(clamped);
-            return nextInputs;
-        });
+    function syncLocalInputs (nextSettings: QuizSettings): void {
+        setMaxTermsInput(String(nextSettings.maxTerms));
+        setQuestionCountInput(String(nextSettings.questionCount));
+        setTimeLimitSecInput(String(nextSettings.timeLimitSec));
+        setTermDigitInputs(nextSettings.termMaxDigits.map((value) => {
+            return String(value);
+        }));
     }
 
     function isDigitsOnly (value: string): boolean {
@@ -171,6 +134,15 @@ export function SettingsPage () {
         });
     }
 
+    function updateInputMethod (inputMethod: InputMethodType): void {
+        setQuizSettings((prev) => {
+            return {
+                ...prev,
+                inputMethod,
+            };
+        });
+    }
+
     return (
         <div className="page-container">
             <h1>オプション設定</h1>
@@ -196,7 +168,7 @@ export function SettingsPage () {
                                 setMaxTermsInput(raw);
                             }}
                             onBlur={() => {
-                                commitMaxTerms();
+                                commitAllInputs();
                             }}
                         />
                     </label>
@@ -218,7 +190,7 @@ export function SettingsPage () {
                                 setQuestionCountInput(raw);
                             }}
                             onBlur={() => {
-                                commitQuestionCount();
+                                commitAllInputs();
                             }}
                         />
                     </label>
@@ -252,7 +224,7 @@ export function SettingsPage () {
                                         });
                                     }}
                                     onBlur={() => {
-                                        commitTermDigit(index);
+                                        commitAllInputs();
                                     }}
                                 />
                             </label>
@@ -302,10 +274,50 @@ export function SettingsPage () {
                             setTimeLimitSecInput(raw);
                         }}
                         onBlur={() => {
-                            commitTimeLimitSec();
+                            commitAllInputs();
                         }}
                     />
                 </label>
+            </section>
+
+            <section className="card">
+                <h2>入力方式</h2>
+
+                <div className="segmented-row">
+                    <button
+                        type="button"
+                        className={`segmented-button ${quizSettings.inputMethod === 'auto' ? 'is-selected' : ''}`}
+                        onClick={() => {
+                            updateInputMethod('auto');
+                        }}
+                    >
+                        自動
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`segmented-button ${quizSettings.inputMethod === 'keyboard' ? 'is-selected' : ''}`}
+                        onClick={() => {
+                            updateInputMethod('keyboard');
+                        }}
+                    >
+                        キーボード優先
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`segmented-button ${quizSettings.inputMethod === 'tile' ? 'is-selected' : ''}`}
+                        onClick={() => {
+                            updateInputMethod('tile');
+                        }}
+                    >
+                        数字タイル優先
+                    </button>
+                </div>
+
+                <p className="sub-text">
+                    自動: PC はキーボード寄り、スマホは数字タイル寄りで開始します。
+                </p>
             </section>
 
             <section className="card">
@@ -498,4 +510,20 @@ export function SettingsPage () {
             </section>
         </div>
     );
+}
+
+function clampNumber (
+    raw: string,
+    minValue: number,
+    maxValue: number,
+    fallback: number
+): number {
+    const parsed = Number(raw);
+    const nextValue = (
+        Number.isFinite(parsed) === true
+            ? parsed
+            : fallback
+    );
+
+    return Math.max(minValue, Math.min(maxValue, nextValue));
 }

@@ -1,5 +1,6 @@
 export type CourseType = 'add' | 'sub' | 'mul' | 'div';
 export type AnswerKind = 'number' | 'quotientRemainder';
+export type InputMethodType = 'auto' | 'keyboard' | 'tile';
 
 export interface QuizSettings {
     selectedCourses: CourseType[];
@@ -14,6 +15,7 @@ export interface QuizSettings {
     allowRealDivision: boolean;
     presetName: string;
     handwritingMemoEnabled: boolean;
+    inputMethod: InputMethodType;
 }
 
 export interface UserProfile {

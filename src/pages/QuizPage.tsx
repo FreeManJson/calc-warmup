@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FEEDBACK_DISPLAY_MS } from '../constants/appConstants';
+import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
-import type { AnswerResult } from '../types/appTypes';
+import type { AnswerResult, InputMethodType } from '../types/appTypes';
 import {
     buildQuizResult,
     calculateQuestionScore,
@@ -11,6 +11,7 @@ import {
 } from '../utils/quizUtils';
 
 type PhaseType = 'countdown' | 'active' | 'feedback';
+type ActiveInputModeType = 'keyboard' | 'tile';
 
 export function QuizPage () {
     const navigate = useNavigate();
@@ -33,6 +34,9 @@ export function QuizPage () {
     const [nowTick, setNowTick] = useState<number>(Date.now());
     const [feedbackClassName, setFeedbackClassName] = useState<string>('');
     const [feedbackText, setFeedbackText] = useState<string>('');
+    const [activeInputMode, setActiveInputMode] = useState<ActiveInputModeType>(() => {
+        return resolveInitialInteractiveInputMode('auto');
+    });
 
     const nextTimeoutRef = useRef<number | null>(null);
     const answerInputRef = useRef<HTMLInputElement | null>(null);
@@ -67,6 +71,22 @@ export function QuizPage () {
         return Math.max(0, (limitMs - elapsedMs));
     }, [currentQuiz, elapsedMs]);
 
+    const paused = (pausedAt != null);
+
+    const decimalKeyEnabled = (
+        (currentQuiz?.settingsSnapshot.allowDecimal === true) ||
+        (currentQuiz?.settingsSnapshot.allowRealDivision === true)
+    );
+
+    const spaceKeyEnabled = (
+        currentQuestion?.answerKind === 'quotientRemainder'
+    );
+
+    const minusKeyEnabled = (
+        (currentQuiz?.settingsSnapshot.allowNegative === true) ||
+        ((currentQuestion?.expectedNumber ?? 0) < 0)
+    );
+
     useEffect(() => {
         return () => {
             if (nextTimeoutRef.current != null) {
@@ -91,6 +111,9 @@ export function QuizPage () {
         setNowTick(Date.now());
         setFeedbackClassName('');
         setFeedbackText('');
+        setActiveInputMode(
+            resolveInitialInteractiveInputMode(currentQuiz.settingsSnapshot.inputMethod)
+        );
     }, [currentQuiz?.id]);
 
     useEffect(() => {
@@ -123,6 +146,11 @@ export function QuizPage () {
             return;
         }
 
+        if (activeInputMode !== 'keyboard') {
+            answerInputRef.current?.blur();
+            return;
+        }
+
         const timerId = window.setTimeout(() => {
             answerInputRef.current?.focus();
             answerInputRef.current?.select();
@@ -131,7 +159,7 @@ export function QuizPage () {
         return () => {
             window.clearTimeout(timerId);
         };
-    }, [phase, currentIndex, pausedAt]);
+    }, [phase, currentIndex, pausedAt, activeInputMode]);
 
     const goToNextQuestionOrFinish = useCallback((nextAnswers: AnswerResult[]) => {
         if (currentQuiz == null) {
@@ -235,15 +263,20 @@ export function QuizPage () {
         setPhase('feedback');
         setInputValue('');
 
+        let delayMs: number = FEEDBACK_DELAY_MS.wrong;
+
         if (mode === 'timeout') {
             setFeedbackClassName('feedback-timeout');
             setFeedbackText(`時間切れ！ 正解: ${currentQuestion.correctText}`);
+            delayMs = FEEDBACK_DELAY_MS.timeout;
         } else if (isCorrect === true) {
             setFeedbackClassName('feedback-correct');
             setFeedbackText(`正解！ ${answerRecord.score}点`);
+            delayMs = FEEDBACK_DELAY_MS.correct;
         } else {
             setFeedbackClassName('feedback-wrong');
             setFeedbackText(`不正解。正解: ${currentQuestion.correctText}`);
+            delayMs = FEEDBACK_DELAY_MS.wrong;
         }
 
         if (nextTimeoutRef.current != null) {
@@ -252,7 +285,7 @@ export function QuizPage () {
 
         nextTimeoutRef.current = window.setTimeout(() => {
             goToNextQuestionOrFinish(nextAnswers);
-        }, FEEDBACK_DISPLAY_MS);
+        }, delayMs);
     }, [
         currentQuiz,
         currentQuestion,
@@ -362,8 +395,6 @@ export function QuizPage () {
     }
 
     function handleInputKeyDown (event: React.KeyboardEvent<HTMLInputElement>): void {
-        const paused = (pausedAt != null);
-
         if (isComposingRef.current === true) {
             return;
         }
@@ -387,6 +418,65 @@ export function QuizPage () {
 
             goToNextQuestionOrFinish(answers);
         }
+    }
+
+    function switchToKeyboardMode (): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        setActiveInputMode('keyboard');
+
+        window.setTimeout(() => {
+            answerInputRef.current?.focus();
+            answerInputRef.current?.select();
+        }, 0);
+    }
+
+    function switchToTileMode (): void {
+        setActiveInputMode('tile');
+        answerInputRef.current?.blur();
+    }
+
+    function appendInputValue (text: string): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        switchToTileMode();
+
+        setInputValue((prev) => {
+            return (prev + text);
+        });
+    }
+
+    function backspaceInputValue (): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        switchToTileMode();
+
+        setInputValue((prev) => {
+            return prev.slice(0, -1);
+        });
+    }
+
+    function clearInputValue (): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        switchToTileMode();
+        setInputValue('');
+    }
+
+    function handleTileSubmit (): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        handleSettleCurrentQuestion('submit');
     }
 
     if ((currentQuiz == null) || (currentQuestion == null)) {
@@ -414,7 +504,6 @@ export function QuizPage () {
 
     const questionNo = (currentIndex + 1);
     const totalQuestions = currentQuiz.questions.length;
-    const paused = (pausedAt != null);
 
     return (
         <div className="page-container">
@@ -478,6 +567,34 @@ export function QuizPage () {
                             )}
                         </div>
 
+                        <div className="mode-row">
+                            <div className="mode-badge">
+                                現在の入力方式: {activeInputMode === 'keyboard' ? 'キーボード' : '数字タイル'}
+                            </div>
+
+                            <div className="segmented-row">
+                                <button
+                                    type="button"
+                                    className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
+                                    onClick={() => {
+                                        switchToKeyboardMode();
+                                    }}
+                                >
+                                    キーボード入力
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
+                                    onClick={() => {
+                                        switchToTileMode();
+                                    }}
+                                >
+                                    数字タイル入力
+                                </button>
+                            </div>
+                        </div>
+
                         <h2>問題</h2>
                         <div className="question-box">{currentQuestion.expression}</div>
 
@@ -515,6 +632,9 @@ export function QuizPage () {
                                             ? '[0-9\\- ]*'
                                             : '[0-9\\-\\.]*'
                                     }
+                                    onFocus={() => {
+                                        setActiveInputMode('keyboard');
+                                    }}
                                     onCompositionStart={() => {
                                         isComposingRef.current = true;
                                     }}
@@ -531,12 +651,43 @@ export function QuizPage () {
                             <div className="button-row top-gap">
                                 <button
                                     type="submit"
+                                    className="primary-button"
                                     disabled={(phase !== 'active') || (paused === true)}
                                 >
                                     回答する
                                 </button>
                             </div>
                         </form>
+                    </section>
+
+                    <section className="card">
+                        <h2>数字タイル入力</h2>
+
+                        <div className="keypad-grid">
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('7'); }}>7</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('8'); }}>8</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('9'); }}>9</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { backspaceInputValue(); }}>←</button>
+
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('4'); }}>4</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('5'); }}>5</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('6'); }}>6</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { clearInputValue(); }}>C</button>
+
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('1'); }}>1</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('2'); }}>2</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('3'); }}>3</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (minusKeyEnabled === false)} onClick={() => { appendInputValue('-'); }}>-</button>
+
+                            <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('0'); }}>0</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (decimalKeyEnabled === false)} onClick={() => { appendInputValue('.'); }}>.</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (spaceKeyEnabled === false)} onClick={() => { appendInputValue(' '); }}>空白</button>
+                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || paused} onClick={() => { handleTileSubmit(); }}>回答</button>
+                        </div>
+
+                        <p className="sub-text">
+                            数字タイルを押すと、スマホではキーボードを閉じる挙動になります。
+                        </p>
                     </section>
 
                     {currentQuiz.settingsSnapshot.handwritingMemoEnabled === true && (
@@ -564,4 +715,33 @@ export function QuizPage () {
             )}
         </div>
     );
+}
+
+function resolveInitialInteractiveInputMode (
+    inputMethod: InputMethodType
+): ActiveInputModeType {
+    if (inputMethod === 'keyboard') {
+        return 'keyboard';
+    }
+
+    if (inputMethod === 'tile') {
+        return 'tile';
+    }
+
+    return (
+        isProbablyMobileInputEnvironment() === true
+            ? 'tile'
+            : 'keyboard'
+    );
+}
+
+function isProbablyMobileInputEnvironment (): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches === true;
+    const hasTouch = ('ontouchstart' in window);
+
+    return (coarsePointer || hasTouch);
 }

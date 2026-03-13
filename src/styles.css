@@ -18,6 +18,7 @@ button,
 input,
 select {
     font: inherit;
+    color: inherit;
 }
 
 button {
@@ -26,6 +27,10 @@ button {
     border-radius: 8px;
     padding: 10px 16px;
     background-color: #ffffff;
+    color: #222222;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-text-fill-color: #222222;
 }
 
 button:hover {
@@ -64,6 +69,7 @@ button:disabled {
     border: 1px solid #c7cbd6;
     border-radius: 8px;
     background-color: #ffffff;
+    color: #222222;
 }
 
 .form-grid {
@@ -199,6 +205,76 @@ button:disabled {
     margin-top: 12px;
 }
 
+.bottom-gap {
+    margin-bottom: 12px;
+}
+
+.primary-button {
+    background-color: #eef5ff;
+    color: #222222;
+    font-weight: bold;
+    -webkit-text-fill-color: #222222;
+}
+
+.mode-row {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.mode-badge {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background-color: #f3f6fc;
+    border: 1px solid #d9deea;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.segmented-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.segmented-button {
+    background-color: #ffffff;
+}
+
+.segmented-button.is-selected {
+    background-color: #eaf2ff;
+    border-color: #9db9ef;
+    font-weight: bold;
+}
+
+.keypad-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(68px, 1fr));
+    gap: 10px;
+}
+
+.keypad-button {
+    min-height: 56px;
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.keypad-button-sub {
+    font-size: 18px;
+}
+
+.keypad-button-primary {
+    background-color: #eef5ff;
+    font-size: 18px;
+    -webkit-text-fill-color: #222222;
+}
+
+.keypad-button-wide {
+    grid-column: span 1;
+}
+
 @media (max-width: 640px) {
     .quiz-header {
         flex-direction: column;
@@ -211,12 +287,13 @@ button:disabled {
     .result-table {
         font-size: 13px;
     }
-}
 
-.input-control {
-    ime-mode: disabled;
-}
+    .keypad-grid {
+        grid-template-columns: repeat(4, minmax(56px, 1fr));
+    }
 
-.bottom-gap {
-    margin-bottom: 12px;
+    .keypad-button {
+        min-height: 52px;
+        font-size: 22px;
+    }
 }

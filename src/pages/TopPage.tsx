@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import type { CourseType } from '../types/appTypes';
+import type { CourseType, InputMethodType } from '../types/appTypes';
 import { getCourseLabelText } from '../utils/quizUtils';
 
 export function TopPage () {
@@ -230,6 +230,7 @@ export function TopPage () {
                             ? ` あり（${quizSettings.timeLimitSec}秒）`
                             : ' なし'}
                     </li>
+                    <li>入力方式: {getInputMethodLabel(quizSettings.inputMethod)}</li>
                     <li>プリセット: {quizSettings.presetName}</li>
                 </ul>
             </section>
@@ -268,4 +269,18 @@ export function TopPage () {
             </section>
         </div>
     );
+}
+
+function getInputMethodLabel (inputMethod: InputMethodType): string {
+    switch (inputMethod) {
+        case 'keyboard':
+            return 'キーボード優先';
+
+        case 'tile':
+            return '数字タイル優先';
+
+        case 'auto':
+        default:
+            return '自動';
+    }
 }
