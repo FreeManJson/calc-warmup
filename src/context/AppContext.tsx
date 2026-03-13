@@ -26,6 +26,16 @@ import {
     generateQuestions,
 } from '../utils/quizUtils';
 
+interface AddUserResult {
+    ok: boolean;
+    message?: string;
+}
+
+interface DeleteUserResult {
+    ok: boolean;
+    message?: string;
+}
+
 interface AppContextType {
     users: UserProfile[];
     selectedUserId: string;
@@ -38,34 +48,56 @@ interface AppContextType {
     startQuiz: () => boolean;
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
+    addUser: (name: string) => AddUserResult;
+    deleteUser: (userId: string) => DeleteUserResult;
+    clearRanking: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
+const DEFAULT_USERS = createDefaultUsers();
+
 export function AppProvider (
     { children }: { children: React.ReactNode }
 ) {
-    const users = useMemo(() => {
-        return createDefaultUsers();
-    }, []);
+    const [users, setUsers] = useState<UserProfile[]>(() => {
+        const storedUsers = readJson<UserProfile[] | null>(
+            STORAGE_KEYS.users,
+            null
+        );
+
+        if ((storedUsers == null) || (storedUsers.length <= 0)) {
+            return DEFAULT_USERS;
+        }
+
+        return storedUsers;
+    });
 
     const [selectedUserId, setSelectedUserIdState] = useState<string>(() => {
-        return readJson<string>(
+        const storedUserId = readJson<string | null>(
             STORAGE_KEYS.selectedUserId,
-            users[1]?.id ?? users[0].id
+            null
         );
+
+        if ((storedUserId != null) && (storedUserId.length > 0)) {
+            return storedUserId;
+        }
+
+        return DEFAULT_USERS[0].id;
     });
 
     const [settingsByUserId, setSettingsByUserId] = useState<Record<string, QuizSettings>>(() => {
-        const initialMap = buildInitialSettingsMap(users);
-        const storedMap = readJson<Record<string, QuizSettings>>(
+        const initialMap = buildInitialSettingsMap(
+            readJson<UserProfile[] | null>(STORAGE_KEYS.users, null) ?? DEFAULT_USERS
+        );
+        const storedMap = readJson<Record<string, QuizSettings> | null>(
             STORAGE_KEYS.settingsByUserId,
-            initialMap
+            null
         );
 
         return {
             ...initialMap,
-            ...storedMap,
+            ...(storedMap ?? {}),
         };
     });
 
@@ -79,9 +111,48 @@ export function AppProvider (
 
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
 
-    const quizSettings = (
-        settingsByUserId[selectedUserId] ?? createDefaultSettings()
-    );
+    useEffect(() => {
+        if (users.length <= 0) {
+            setUsers(DEFAULT_USERS);
+            return;
+        }
+
+        const exists = users.some((user) => {
+            return (user.id === selectedUserId);
+        });
+
+        if (exists === false) {
+            setSelectedUserIdState(users[0].id);
+        }
+    }, [users, selectedUserId]);
+
+    useEffect(() => {
+        setSettingsByUserId((prevMap) => {
+            const nextMap = { ...prevMap };
+
+            users.forEach((user) => {
+                if (nextMap[user.id] == null) {
+                    nextMap[user.id] = createDefaultSettings();
+                }
+            });
+
+            Object.keys(nextMap).forEach((userId) => {
+                const exists = users.some((user) => {
+                    return (user.id === userId);
+                });
+
+                if (exists === false) {
+                    delete nextMap[userId];
+                }
+            });
+
+            return nextMap;
+        });
+    }, [users]);
+
+    useEffect(() => {
+        writeJson(STORAGE_KEYS.users, users);
+    }, [users]);
 
     useEffect(() => {
         writeJson(STORAGE_KEYS.selectedUserId, selectedUserId);
@@ -99,16 +170,9 @@ export function AppProvider (
         writeJson(STORAGE_KEYS.latestResult, latestResult);
     }, [latestResult]);
 
-    useEffect(() => {
-        if (settingsByUserId[selectedUserId] == null) {
-            setSettingsByUserId((prevMap) => {
-                return {
-                    ...prevMap,
-                    [selectedUserId]: createDefaultSettings(),
-                };
-            });
-        }
-    }, [selectedUserId, settingsByUserId]);
+    const quizSettings = (
+        settingsByUserId[selectedUserId] ?? createDefaultSettings()
+    );
 
     const setSelectedUserId = useCallback((userId: string) => {
         setSelectedUserIdState(userId);
@@ -126,24 +190,40 @@ export function AppProvider (
                     : nextValue
             );
 
+            const normalizedCourses = (
+                resolvedValue.selectedCourses.length > 0
+                    ? resolvedValue.selectedCourses
+                    : ['add']
+            );
+
             return {
                 ...prevMap,
-                [selectedUserId]: resolvedValue,
+                [selectedUserId]: {
+                    ...resolvedValue,
+                    selectedCourses: normalizedCourses,
+                },
             };
         });
     }, [selectedUserId]);
 
     const startQuiz = useCallback(() => {
+        const normalizedCourses = (
+            quizSettings.selectedCourses.length > 0
+                ? quizSettings.selectedCourses
+                : ['add']
+        );
+
         const snapshot: QuizSettings = {
             ...quizSettings,
-            selectedCourses: [...quizSettings.selectedCourses],
+            selectedCourses: [...normalizedCourses],
+            termMaxDigits: [...quizSettings.termMaxDigits],
         };
 
-        if (snapshot.selectedCourses.length <= 0) {
+        const questions = generateQuestions(snapshot);
+
+        if (questions.length <= 0) {
             return false;
         }
-
-        const questions = generateQuestions(snapshot);
 
         setCurrentQuiz({
             id: `quiz-${Date.now()}`,
@@ -193,6 +273,100 @@ export function AppProvider (
         setCurrentQuiz(null);
     }, []);
 
+    const addUser = useCallback((name: string): AddUserResult => {
+        const trimmed = name.trim();
+
+        if (trimmed.length <= 0) {
+            return {
+                ok: false,
+                message: 'ユーザー名を入力してください。',
+            };
+        }
+
+        const exists = users.some((user) => {
+            return (user.name.toLowerCase() === trimmed.toLowerCase());
+        });
+
+        if (exists === true) {
+            return {
+                ok: false,
+                message: '同名ユーザーが既に存在します。',
+            };
+        }
+
+        const newUser: UserProfile = {
+            id: `user-${Date.now()}`,
+            name: trimmed,
+        };
+
+        setUsers((prevUsers) => {
+            return [...prevUsers, newUser];
+        });
+
+        setSettingsByUserId((prevMap) => {
+            return {
+                ...prevMap,
+                [newUser.id]: createDefaultSettings(),
+            };
+        });
+
+        setSelectedUserIdState(newUser.id);
+
+        return {
+            ok: true,
+        };
+    }, [users]);
+
+    const deleteUser = useCallback((userId: string): DeleteUserResult => {
+        if (users.length <= 1) {
+            return {
+                ok: false,
+                message: '最後の1ユーザーは削除できません。',
+            };
+        }
+
+        const targetUser = users.find((user) => {
+            return (user.id === userId);
+        });
+
+        if (targetUser == null) {
+            return {
+                ok: false,
+                message: '削除対象ユーザーが見つかりません。',
+            };
+        }
+
+        const nextUsers = users.filter((user) => {
+            return (user.id !== userId);
+        });
+
+        setUsers(nextUsers);
+
+        setSettingsByUserId((prevMap) => {
+            const nextMap = { ...prevMap };
+            delete nextMap[userId];
+            return nextMap;
+        });
+
+        setRanking((prevRanking) => {
+            return prevRanking.filter((entry) => {
+                return (entry.userName !== targetUser.name);
+            });
+        });
+
+        if (selectedUserId === userId) {
+            setSelectedUserIdState(nextUsers[0].id);
+        }
+
+        return {
+            ok: true,
+        };
+    }, [users, selectedUserId]);
+
+    const clearRanking = useCallback(() => {
+        setRanking([]);
+    }, []);
+
     const contextValue = useMemo<AppContextType>(() => {
         return {
             users,
@@ -206,6 +380,9 @@ export function AppProvider (
             startQuiz,
             clearQuiz,
             finishQuiz,
+            addUser,
+            deleteUser,
+            clearRanking,
         };
     }, [
         users,
@@ -219,6 +396,9 @@ export function AppProvider (
         startQuiz,
         clearQuiz,
         finishQuiz,
+        addUser,
+        deleteUser,
+        clearRanking,
     ]);
 
     return (

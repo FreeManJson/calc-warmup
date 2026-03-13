@@ -12,11 +12,17 @@ export function TopPage () {
         quizSettings,
         setQuizSettings,
         startQuiz,
+        addUser,
+        deleteUser,
     } = useAppContext();
 
     function toggleCourse (course: CourseType): void {
         setQuizSettings((prev) => {
             const exists = prev.selectedCourses.includes(course);
+
+            if ((exists === true) && (prev.selectedCourses.length === 1)) {
+                return prev;
+            }
 
             if (exists === true) {
                 return {
@@ -45,6 +51,46 @@ export function TopPage () {
         navigate('/quiz');
     }
 
+    function handleAddUser (): void {
+        const inputName = window.prompt('追加するユーザー名を入力してください。');
+
+        if (inputName == null) {
+            return;
+        }
+
+        const result = addUser(inputName);
+
+        if (result.ok === false) {
+            window.alert(result.message ?? 'ユーザー追加に失敗しました。');
+        }
+    }
+
+    function handleDeleteUser (): void {
+        const currentUser = users.find((user) => {
+            return (user.id === selectedUserId);
+        });
+
+        if (currentUser == null) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `ユーザー「${currentUser.name}」を削除します。よろしいですか？`
+        );
+
+        if (confirmed === false) {
+            return;
+        }
+
+        const result = deleteUser(currentUser.id);
+
+        if (result.ok === false) {
+            window.alert(result.message ?? 'ユーザー削除に失敗しました。');
+        }
+    }
+
+    const visibleTermDigits = quizSettings.termMaxDigits.slice(0, quizSettings.maxTerms);
+
     return (
         <div className="page-container">
             <h1>計算ウォーミングアップ</h1>
@@ -68,6 +114,27 @@ export function TopPage () {
                     })}
                 </select>
 
+                <div className="button-row top-gap">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            handleAddUser();
+                        }}
+                    >
+                        ユーザー追加
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            handleDeleteUser();
+                        }}
+                        disabled={users.length <= 1}
+                    >
+                        選択中ユーザー削除
+                    </button>
+                </div>
+
                 <p className="sub-text">
                     ユーザーごとに前回設定を保持します。
                 </p>
@@ -81,6 +148,10 @@ export function TopPage () {
                         <input
                             type="checkbox"
                             checked={quizSettings.selectedCourses.includes('add')}
+                            disabled={
+                                (quizSettings.selectedCourses.length === 1) &&
+                                (quizSettings.selectedCourses.includes('add'))
+                            }
                             onChange={() => {
                                 toggleCourse('add');
                             }}
@@ -92,6 +163,10 @@ export function TopPage () {
                         <input
                             type="checkbox"
                             checked={quizSettings.selectedCourses.includes('sub')}
+                            disabled={
+                                (quizSettings.selectedCourses.length === 1) &&
+                                (quizSettings.selectedCourses.includes('sub'))
+                            }
                             onChange={() => {
                                 toggleCourse('sub');
                             }}
@@ -103,6 +178,10 @@ export function TopPage () {
                         <input
                             type="checkbox"
                             checked={quizSettings.selectedCourses.includes('mul')}
+                            disabled={
+                                (quizSettings.selectedCourses.length === 1) &&
+                                (quizSettings.selectedCourses.includes('mul'))
+                            }
                             onChange={() => {
                                 toggleCourse('mul');
                             }}
@@ -114,6 +193,10 @@ export function TopPage () {
                         <input
                             type="checkbox"
                             checked={quizSettings.selectedCourses.includes('div')}
+                            disabled={
+                                (quizSettings.selectedCourses.length === 1) &&
+                                (quizSettings.selectedCourses.includes('div'))
+                            }
                             onChange={() => {
                                 toggleCourse('div');
                             }}
@@ -121,6 +204,10 @@ export function TopPage () {
                         割り算
                     </label>
                 </div>
+
+                <p className="sub-text">
+                    コースは最低1つ選択された状態を保持します。
+                </p>
             </section>
 
             <section className="card">
@@ -129,7 +216,13 @@ export function TopPage () {
                 <ul className="simple-list">
                     <li>コース: {getCourseLabelText(quizSettings.selectedCourses)}</li>
                     <li>最大項目数: {quizSettings.maxTerms}</li>
-                    <li>桁数: 1項目目 {quizSettings.firstTermMaxDigits}桁 / 2項目目 {quizSettings.secondTermMaxDigits}桁</li>
+                    <li>
+                        各項目の最大桁数:
+                        {' '}
+                        {visibleTermDigits.map((digits, index) => {
+                            return `${index + 1}項目目 ${digits}桁`;
+                        }).join(' / ')}
+                    </li>
                     <li>出題数: {quizSettings.questionCount}問</li>
                     <li>
                         時間制限:

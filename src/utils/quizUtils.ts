@@ -21,6 +21,10 @@ export function getCourseLabel (course: CourseType): string {
 }
 
 export function getCourseLabelText (courses: CourseType[]): string {
+    if (courses.length <= 0) {
+        return '未選択';
+    }
+
     return courses.map((course) => {
         return COURSE_LABELS[course];
     }).join(' / ');
@@ -28,9 +32,14 @@ export function getCourseLabelText (courses: CourseType[]): string {
 
 export function generateQuestions (settings: QuizSettings): GeneratedQuestion[] {
     const questions: GeneratedQuestion[] = [];
+    const safeCourses: CourseType[] = (
+        settings.selectedCourses.length > 0
+            ? settings.selectedCourses
+            : ['add']
+    );
 
     for (let lpIndex = 0; lpIndex < settings.questionCount; lpIndex += 1) {
-        const course = pickRandomCourse(settings.selectedCourses);
+        const course = pickRandomCourse(safeCourses);
         questions.push(generateSingleQuestion(course, settings, lpIndex));
     }
 
@@ -99,7 +108,9 @@ export function calculateQuestionScore (
     let targetMs = 3500;
 
     targetMs += ((settings.maxTerms - 2) * 500);
-    targetMs += ((settings.secondTermMaxDigits - 1) * 250);
+
+    const maxDigits = Math.max(...settings.termMaxDigits.slice(0, settings.maxTerms), 1);
+    targetMs += ((maxDigits - 1) * 250);
 
     if (settings.timeLimitEnabled === true) {
         targetMs = (settings.timeLimitSec * 1000);
@@ -260,7 +271,7 @@ function generateSubtractionQuestion (
         return (sum + value);
     }, 0), settings.allowDecimal);
 
-    const delta = createOperand(settings.firstTermMaxDigits, settings.allowDecimal);
+    const delta = createOperand(getDigitsForTerm(0, settings), settings.allowDecimal);
     let firstOperand = subTotal + delta;
 
     if ((settings.allowNegative === true) && (Math.random() < 0.45)) {
@@ -336,8 +347,8 @@ function generateDivisionQuestion (
     settings: QuizSettings,
     index: number
 ): GeneratedQuestion {
-    const divisorDigits = Math.min(settings.secondTermMaxDigits, 3);
-    const quotientDigits = Math.min(settings.firstTermMaxDigits, 3);
+    const divisorDigits = Math.min(getDigitsForTerm(1, settings), 3);
+    const quotientDigits = Math.min(getDigitsForTerm(0, settings), 3);
 
     const divisor = Math.max(2, createIntegerOperand(divisorDigits));
 
@@ -359,7 +370,7 @@ function generateDivisionQuestion (
     }
 
     if (settings.allowRealDivision === true) {
-        const dividend = createIntegerOperand(Math.min(settings.firstTermMaxDigits, 4));
+        const dividend = createIntegerOperand(Math.min(getDigitsForTerm(0, settings), 4));
         const rawAnswer = (dividend / divisor);
         const roundedAnswer = Number(rawAnswer.toFixed(REAL_DIVISION_DECIMAL_DIGITS));
 
@@ -426,7 +437,11 @@ function calculateDifficulty (
     }
 
     difficulty += ((termCount - 2) * 0.08);
-    difficulty += ((settings.secondTermMaxDigits - 1) * 0.07);
+
+    const visibleDigits = settings.termMaxDigits.slice(0, settings.maxTerms);
+    const maxDigits = Math.max(...visibleDigits, 1);
+
+    difficulty += ((maxDigits - 1) * 0.07);
 
     if (settings.allowNegative === true) {
         difficulty += 0.10;
@@ -451,11 +466,7 @@ function getDigitsForTerm (
     termIndex: number,
     settings: QuizSettings
 ): number {
-    if (termIndex === 0) {
-        return settings.firstTermMaxDigits;
-    }
-
-    return settings.secondTermMaxDigits;
+    return settings.termMaxDigits[termIndex] ?? settings.termMaxDigits[0] ?? 2;
 }
 
 function createOperand (

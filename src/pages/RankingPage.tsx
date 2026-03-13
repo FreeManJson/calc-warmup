@@ -3,13 +3,39 @@ import { useAppContext } from '../context/AppContext';
 
 export function RankingPage () {
     const navigate = useNavigate();
-    const { ranking } = useAppContext();
+    const { ranking, clearRanking } = useAppContext();
+
+    function handleClearRanking (): void {
+        if (ranking.length <= 0) {
+            return;
+        }
+
+        const confirmed = window.confirm('ランキングを全件削除します。よろしいですか？');
+
+        if (confirmed === false) {
+            return;
+        }
+
+        clearRanking();
+    }
 
     return (
         <div className="page-container">
             <h1>ランキング</h1>
 
             <section className="card">
+                <div className="button-row bottom-gap">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            handleClearRanking();
+                        }}
+                        disabled={ranking.length <= 0}
+                    >
+                        ランキングクリア
+                    </button>
+                </div>
+
                 {ranking.length <= 0 && (
                     <p>まだランキングはありません。</p>
                 )}

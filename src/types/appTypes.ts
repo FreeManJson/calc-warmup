@@ -4,8 +4,7 @@ export type AnswerKind = 'number' | 'quotientRemainder';
 export interface QuizSettings {
     selectedCourses: CourseType[];
     maxTerms: number;
-    firstTermMaxDigits: number;
-    secondTermMaxDigits: number;
+    termMaxDigits: number[];
     timeLimitEnabled: boolean;
     timeLimitSec: number;
     questionCount: number;

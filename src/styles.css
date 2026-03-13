@@ -216,3 +216,7 @@ button:disabled {
 .input-control {
     ime-mode: disabled;
 }
+
+.bottom-gap {
+    margin-bottom: 12px;
+}

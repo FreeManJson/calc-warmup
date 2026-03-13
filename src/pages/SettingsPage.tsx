@@ -1,12 +1,34 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_TERMS } from '../constants/appConstants';
+import { createFilledTermDigits } from '../constants/defaultSettings';
 import { useAppContext } from '../context/AppContext';
 
 export function SettingsPage () {
     const navigate = useNavigate();
     const { quizSettings, setQuizSettings, startQuiz } = useAppContext();
 
+    const [maxTermsInput, setMaxTermsInput] = useState<string>(String(quizSettings.maxTerms));
+    const [questionCountInput, setQuestionCountInput] = useState<string>(String(quizSettings.questionCount));
+    const [timeLimitSecInput, setTimeLimitSecInput] = useState<string>(String(quizSettings.timeLimitSec));
+    const [termDigitInputs, setTermDigitInputs] = useState<string[]>(
+        quizSettings.termMaxDigits.map((value) => {
+            return String(value);
+        })
+    );
+
+    useEffect(() => {
+        setMaxTermsInput(String(quizSettings.maxTerms));
+        setQuestionCountInput(String(quizSettings.questionCount));
+        setTimeLimitSecInput(String(quizSettings.timeLimitSec));
+        setTermDigitInputs(quizSettings.termMaxDigits.map((value) => {
+            return String(value);
+        }));
+    }, [quizSettings]);
+
     function handleStartWithCurrentSettings (): void {
+        commitAllInputs();
+
         const started = startQuiz();
 
         if (started === false) {
@@ -15,6 +37,138 @@ export function SettingsPage () {
         }
 
         navigate('/quiz');
+    }
+
+    function commitAllInputs (): void {
+        commitMaxTerms();
+        commitQuestionCount();
+        commitTimeLimitSec();
+
+        for (let lpIndex = 0; lpIndex < MAX_TERMS; lpIndex += 1) {
+            commitTermDigit(lpIndex);
+        }
+    }
+
+    function commitMaxTerms (): void {
+        const parsed = Number(maxTermsInput);
+        const nextValue = (
+            Number.isFinite(parsed) === true
+                ? parsed
+                : quizSettings.maxTerms
+        );
+        const clamped = Math.max(2, Math.min(MAX_TERMS, nextValue));
+
+        setQuizSettings((prev) => {
+            return {
+                ...prev,
+                maxTerms: clamped,
+            };
+        });
+
+        setMaxTermsInput(String(clamped));
+    }
+
+    function commitQuestionCount (): void {
+        const parsed = Number(questionCountInput);
+        const nextValue = (
+            Number.isFinite(parsed) === true
+                ? parsed
+                : quizSettings.questionCount
+        );
+        const clamped = Math.max(1, Math.min(100, nextValue));
+
+        setQuizSettings((prev) => {
+            return {
+                ...prev,
+                questionCount: clamped,
+            };
+        });
+
+        setQuestionCountInput(String(clamped));
+    }
+
+    function commitTimeLimitSec (): void {
+        const parsed = Number(timeLimitSecInput);
+        const nextValue = (
+            Number.isFinite(parsed) === true
+                ? parsed
+                : quizSettings.timeLimitSec
+        );
+        const clamped = Math.max(1, Math.min(300, nextValue));
+
+        setQuizSettings((prev) => {
+            return {
+                ...prev,
+                timeLimitSec: clamped,
+            };
+        });
+
+        setTimeLimitSecInput(String(clamped));
+    }
+
+    function commitTermDigit (index: number): void {
+        const raw = termDigitInputs[index] ?? '';
+        const parsed = Number(raw);
+        const currentValue = (quizSettings.termMaxDigits[index] ?? 2);
+        const nextValue = (
+            Number.isFinite(parsed) === true
+                ? parsed
+                : currentValue
+        );
+        const clamped = Math.max(1, Math.min(9, nextValue));
+
+        setQuizSettings((prev) => {
+            const nextDigits = [...prev.termMaxDigits];
+            nextDigits[index] = clamped;
+
+            return {
+                ...prev,
+                termMaxDigits: nextDigits,
+            };
+        });
+
+        setTermDigitInputs((prevInputs) => {
+            const nextInputs = [...prevInputs];
+            nextInputs[index] = String(clamped);
+            return nextInputs;
+        });
+    }
+
+    function isDigitsOnly (value: string): boolean {
+        return (/^\d*$/.test(value) === true);
+    }
+
+    function applyPreset (
+        presetName: string,
+        maxTerms: number,
+        questionCount: number,
+        timeLimitEnabled: boolean,
+        timeLimitSec: number,
+        allowNegative: boolean,
+        allowDecimal: boolean,
+        allowRemainder: boolean,
+        allowRealDivision: boolean,
+        presetDigits: number[]
+    ): void {
+        const normalizedDigits = createFilledTermDigits(2).map((_, index) => {
+            return presetDigits[index] ?? 2;
+        });
+
+        setQuizSettings((prev) => {
+            return {
+                ...prev,
+                presetName,
+                maxTerms,
+                termMaxDigits: normalizedDigits,
+                questionCount,
+                timeLimitEnabled,
+                timeLimitSec,
+                allowNegative,
+                allowDecimal,
+                allowRemainder,
+                allowRealDivision,
+            };
+        });
     }
 
     return (
@@ -29,61 +183,20 @@ export function SettingsPage () {
                         最大項目数
                         <input
                             className="input-control"
-                            type="number"
-                            min={2}
-                            max={MAX_TERMS}
-                            value={quizSettings.maxTerms}
+                            type="text"
+                            inputMode="numeric"
+                            value={maxTermsInput}
                             onChange={(event) => {
-                                const nextValue = Number(event.target.value);
+                                const raw = event.target.value;
 
-                                setQuizSettings((prev) => {
-                                    return {
-                                        ...prev,
-                                        maxTerms: Math.max(2, Math.min(MAX_TERMS, nextValue)),
-                                    };
-                                });
+                                if (isDigitsOnly(raw) === false) {
+                                    return;
+                                }
+
+                                setMaxTermsInput(raw);
                             }}
-                        />
-                    </label>
-
-                    <label>
-                        1項目目 最大桁数
-                        <input
-                            className="input-control"
-                            type="number"
-                            min={1}
-                            max={9}
-                            value={quizSettings.firstTermMaxDigits}
-                            onChange={(event) => {
-                                const nextValue = Number(event.target.value);
-
-                                setQuizSettings((prev) => {
-                                    return {
-                                        ...prev,
-                                        firstTermMaxDigits: Math.max(1, Math.min(9, nextValue)),
-                                    };
-                                });
-                            }}
-                        />
-                    </label>
-
-                    <label>
-                        2項目目 最大桁数
-                        <input
-                            className="input-control"
-                            type="number"
-                            min={1}
-                            max={9}
-                            value={quizSettings.secondTermMaxDigits}
-                            onChange={(event) => {
-                                const nextValue = Number(event.target.value);
-
-                                setQuizSettings((prev) => {
-                                    return {
-                                        ...prev,
-                                        secondTermMaxDigits: Math.max(1, Math.min(9, nextValue)),
-                                    };
-                                });
+                            onBlur={() => {
+                                commitMaxTerms();
                             }}
                         />
                     </label>
@@ -92,23 +205,64 @@ export function SettingsPage () {
                         出題数
                         <input
                             className="input-control"
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={quizSettings.questionCount}
+                            type="text"
+                            inputMode="numeric"
+                            value={questionCountInput}
                             onChange={(event) => {
-                                const nextValue = Number(event.target.value);
+                                const raw = event.target.value;
 
-                                setQuizSettings((prev) => {
-                                    return {
-                                        ...prev,
-                                        questionCount: Math.max(1, Math.min(100, nextValue)),
-                                    };
-                                });
+                                if (isDigitsOnly(raw) === false) {
+                                    return;
+                                }
+
+                                setQuestionCountInput(raw);
+                            }}
+                            onBlur={() => {
+                                commitQuestionCount();
                             }}
                         />
                     </label>
                 </div>
+            </section>
+
+            <section className="card">
+                <h2>n項目目の最大桁数</h2>
+
+                <div className="form-grid">
+                    {Array.from({ length: quizSettings.maxTerms }).map((_, index) => {
+                        return (
+                            <label key={index}>
+                                {index + 1}項目目 最大桁数
+                                <input
+                                    className="input-control"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={termDigitInputs[index] ?? ''}
+                                    onChange={(event) => {
+                                        const raw = event.target.value;
+
+                                        if (isDigitsOnly(raw) === false) {
+                                            return;
+                                        }
+
+                                        setTermDigitInputs((prevInputs) => {
+                                            const nextInputs = [...prevInputs];
+                                            nextInputs[index] = raw;
+                                            return nextInputs;
+                                        });
+                                    }}
+                                    onBlur={() => {
+                                        commitTermDigit(index);
+                                    }}
+                                />
+                            </label>
+                        );
+                    })}
+                </div>
+
+                <p className="sub-text">
+                    最大項目数を増やすと、入力欄も連動して増えます。
+                </p>
             </section>
 
             <section className="card">
@@ -134,20 +288,21 @@ export function SettingsPage () {
                     時間制限（秒）
                     <input
                         className="input-control"
-                        type="number"
-                        min={1}
-                        max={300}
+                        type="text"
+                        inputMode="numeric"
                         disabled={quizSettings.timeLimitEnabled === false}
-                        value={quizSettings.timeLimitSec}
+                        value={timeLimitSecInput}
                         onChange={(event) => {
-                            const nextValue = Number(event.target.value);
+                            const raw = event.target.value;
 
-                            setQuizSettings((prev) => {
-                                return {
-                                    ...prev,
-                                    timeLimitSec: Math.max(1, Math.min(300, nextValue)),
-                                };
-                            });
+                            if (isDigitsOnly(raw) === false) {
+                                return;
+                            }
+
+                            setTimeLimitSecInput(raw);
+                        }}
+                        onBlur={() => {
+                            commitTimeLimitSec();
                         }}
                     />
                 </label>
@@ -256,22 +411,18 @@ export function SettingsPage () {
                     <button
                         type="button"
                         onClick={() => {
-                            setQuizSettings((prev) => {
-                                return {
-                                    ...prev,
-                                    presetName: '小学生4年生レベル',
-                                    maxTerms: 2,
-                                    firstTermMaxDigits: 3,
-                                    secondTermMaxDigits: 3,
-                                    questionCount: 10,
-                                    timeLimitEnabled: false,
-                                    timeLimitSec: 10,
-                                    allowNegative: false,
-                                    allowDecimal: false,
-                                    allowRemainder: false,
-                                    allowRealDivision: false,
-                                };
-                            });
+                            applyPreset(
+                                '小学生4年生レベル',
+                                2,
+                                10,
+                                false,
+                                10,
+                                false,
+                                false,
+                                false,
+                                false,
+                                [3, 3]
+                            );
                         }}
                     >
                         小4
@@ -280,22 +431,18 @@ export function SettingsPage () {
                     <button
                         type="button"
                         onClick={() => {
-                            setQuizSettings((prev) => {
-                                return {
-                                    ...prev,
-                                    presetName: '中学生1年生レベル',
-                                    maxTerms: 3,
-                                    firstTermMaxDigits: 3,
-                                    secondTermMaxDigits: 3,
-                                    questionCount: 12,
-                                    timeLimitEnabled: true,
-                                    timeLimitSec: 12,
-                                    allowNegative: true,
-                                    allowDecimal: false,
-                                    allowRemainder: false,
-                                    allowRealDivision: false,
-                                };
-                            });
+                            applyPreset(
+                                '中学生1年生レベル',
+                                3,
+                                12,
+                                true,
+                                12,
+                                true,
+                                false,
+                                false,
+                                false,
+                                [3, 3, 2]
+                            );
                         }}
                     >
                         中1
@@ -304,22 +451,18 @@ export function SettingsPage () {
                     <button
                         type="button"
                         onClick={() => {
-                            setQuizSettings((prev) => {
-                                return {
-                                    ...prev,
-                                    presetName: '高校基礎',
-                                    maxTerms: 4,
-                                    firstTermMaxDigits: 4,
-                                    secondTermMaxDigits: 4,
-                                    questionCount: 15,
-                                    timeLimitEnabled: true,
-                                    timeLimitSec: 10,
-                                    allowNegative: true,
-                                    allowDecimal: true,
-                                    allowRemainder: false,
-                                    allowRealDivision: false,
-                                };
-                            });
+                            applyPreset(
+                                '高校基礎',
+                                4,
+                                15,
+                                true,
+                                10,
+                                true,
+                                true,
+                                false,
+                                false,
+                                [4, 4, 3, 2]
+                            );
                         }}
                     >
                         高校基礎
@@ -336,6 +479,7 @@ export function SettingsPage () {
                     <button
                         type="button"
                         onClick={() => {
+                            commitAllInputs();
                             navigate('/');
                         }}
                     >

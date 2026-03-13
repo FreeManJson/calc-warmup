@@ -1,11 +1,17 @@
+import { MAX_TERMS } from './appConstants';
 import type { QuizSettings, UserProfile } from '../types/appTypes';
+
+export function createFilledTermDigits (fillValue: number = 2): number[] {
+    return Array.from({ length: MAX_TERMS }, () => {
+        return fillValue;
+    });
+}
 
 export function createDefaultSettings (): QuizSettings {
     return {
         selectedCourses: ['add'],
         maxTerms: 2,
-        firstTermMaxDigits: 2,
-        secondTermMaxDigits: 2,
+        termMaxDigits: createFilledTermDigits(2),
         timeLimitEnabled: false,
         timeLimitSec: 10,
         questionCount: 10,
