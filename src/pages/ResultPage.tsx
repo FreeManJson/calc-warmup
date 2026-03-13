@@ -65,7 +65,7 @@ export function ResultPage () {
                 <table className="result-table">
                     <thead>
                         <tr>
-                            <th>No</th>
+                            <th>№</th>
                             <th>コース</th>
                             <th>問題</th>
                             <th>回答</th>

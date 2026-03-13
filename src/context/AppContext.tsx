@@ -16,6 +16,7 @@ import {
     createDefaultUsers,
 } from '../constants/defaultSettings';
 import type {
+    CourseType,
     CurrentQuiz,
     QuizResult,
     QuizSettings,
@@ -189,8 +190,7 @@ export function AppProvider (
                     ? nextValue(currentSettings)
                     : nextValue
             );
-
-            const normalizedCourses = (
+            const normalizedCourses: CourseType[] = (
                 resolvedValue.selectedCourses.length > 0
                     ? resolvedValue.selectedCourses
                     : ['add']
@@ -207,7 +207,7 @@ export function AppProvider (
     }, [selectedUserId]);
 
     const startQuiz = useCallback(() => {
-        const normalizedCourses = (
+        const normalizedCourses: CourseType[] = (
             quizSettings.selectedCourses.length > 0
                 ? quizSettings.selectedCourses
                 : ['add']
