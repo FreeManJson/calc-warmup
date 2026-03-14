@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_TERMS } from '../constants/appConstants';
-import { createFilledTermDigits } from '../constants/defaultSettings';
 import { useAppContext } from '../context/AppContext';
 import type { InputMethodType, QuizSettings } from '../types/appTypes';
 
@@ -70,7 +69,7 @@ export function SettingsPage () {
             base.timeLimitSec
         );
 
-        const nextTermDigits = createFilledTermDigits(2).map((_, index) => {
+        const nextTermDigits = Array.from({ length: base.termMaxDigits.length }, (_, index) => {
             return clampNumber(
                 termDigitInputs[index] ?? '',
                 1,
@@ -99,39 +98,6 @@ export function SettingsPage () {
 
     function isDigitsOnly (value: string): boolean {
         return (/^\d*$/.test(value) === true);
-    }
-
-    function applyPreset (
-        presetName: string,
-        maxTerms: number,
-        questionCount: number,
-        timeLimitEnabled: boolean,
-        timeLimitSec: number,
-        allowNegative: boolean,
-        allowDecimal: boolean,
-        allowRemainder: boolean,
-        allowRealDivision: boolean,
-        presetDigits: number[]
-    ): void {
-        const normalizedDigits = createFilledTermDigits(2).map((_, index) => {
-            return presetDigits[index] ?? 2;
-        });
-
-        setQuizSettings((prev) => {
-            return {
-                ...prev,
-                presetName,
-                maxTerms,
-                termMaxDigits: normalizedDigits,
-                questionCount,
-                timeLimitEnabled,
-                timeLimitSec,
-                allowNegative,
-                allowDecimal,
-                allowRemainder,
-                allowRealDivision,
-            };
-        });
     }
 
     function updateInputMethod (inputMethod: InputMethodType): void {
@@ -198,13 +164,13 @@ export function SettingsPage () {
             </section>
 
             <section className="card">
-                <h2>n項目目の最大桁数</h2>
+                <h2>n項目めの最大桁数</h2>
 
                 <div className="form-grid">
                     {Array.from({ length: quizSettings.maxTerms }).map((_, index) => {
                         return (
                             <label key={index}>
-                                {index + 1}項目目 最大桁数
+                                {index + 1}項目め 最大桁数
                                 <input
                                     className="input-control"
                                     type="text"
@@ -240,44 +206,46 @@ export function SettingsPage () {
             <section className="card">
                 <h2>時間設定</h2>
 
-                <label className="single-check">
-                    <input
-                        type="checkbox"
-                        checked={quizSettings.timeLimitEnabled}
-                        onChange={(event) => {
-                            setQuizSettings((prev) => {
-                                return {
-                                    ...prev,
-                                    timeLimitEnabled: event.target.checked,
-                                };
-                            });
-                        }}
-                    />
-                    時間制限あり
-                </label>
+                <div className="time-limit-row">
+                    <label className="single-check">
+                        <input
+                            type="checkbox"
+                            checked={quizSettings.timeLimitEnabled}
+                            onChange={(event) => {
+                                setQuizSettings((prev) => {
+                                    return {
+                                        ...prev,
+                                        timeLimitEnabled: event.target.checked,
+                                    };
+                                });
+                            }}
+                        />
+                        時間制限
+                    </label>
 
-                <label>
-                    時間制限（秒）
-                    <input
-                        className="input-control"
-                        type="text"
-                        inputMode="numeric"
-                        disabled={quizSettings.timeLimitEnabled === false}
-                        value={timeLimitSecInput}
-                        onChange={(event) => {
-                            const raw = event.target.value;
+                    <div className="time-limit-input-group">
+                        <input
+                            className="input-control compact-input"
+                            type="text"
+                            inputMode="numeric"
+                            disabled={quizSettings.timeLimitEnabled === false}
+                            value={timeLimitSecInput}
+                            onChange={(event) => {
+                                const raw = event.target.value;
 
-                            if (isDigitsOnly(raw) === false) {
-                                return;
-                            }
+                                if (isDigitsOnly(raw) === false) {
+                                    return;
+                                }
 
-                            setTimeLimitSecInput(raw);
-                        }}
-                        onBlur={() => {
-                            commitAllInputs();
-                        }}
-                    />
-                </label>
+                                setTimeLimitSecInput(raw);
+                            }}
+                            onBlur={() => {
+                                commitAllInputs();
+                            }}
+                        />
+                        <span className="unit-label">秒</span>
+                    </div>
+                </div>
             </section>
 
             <section className="card">
@@ -397,93 +365,7 @@ export function SettingsPage () {
                         />
                         実数の割り算を許可
                     </label>
-
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={quizSettings.handwritingMemoEnabled}
-                            onChange={(event) => {
-                                setQuizSettings((prev) => {
-                                    return {
-                                        ...prev,
-                                        handwritingMemoEnabled: event.target.checked,
-                                    };
-                                });
-                            }}
-                        />
-                        手書きメモ欄を有効化（今はダミー表示）
-                    </label>
                 </div>
-            </section>
-
-            <section className="card">
-                <h2>プリセット</h2>
-
-                <div className="button-row">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            applyPreset(
-                                '小学生4年生レベル',
-                                2,
-                                10,
-                                false,
-                                10,
-                                false,
-                                false,
-                                false,
-                                false,
-                                [3, 3]
-                            );
-                        }}
-                    >
-                        小4
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => {
-                            applyPreset(
-                                '中学生1年生レベル',
-                                3,
-                                12,
-                                true,
-                                12,
-                                true,
-                                false,
-                                false,
-                                false,
-                                [3, 3, 2]
-                            );
-                        }}
-                    >
-                        中1
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => {
-                            applyPreset(
-                                '高校基礎',
-                                4,
-                                15,
-                                true,
-                                10,
-                                true,
-                                true,
-                                false,
-                                false,
-                                [4, 4, 3, 2]
-                            );
-                        }}
-                    >
-                        高校基礎
-                    </button>
-                </div>
-
-                <p className="sub-text">
-                    現在のプリセット: {quizSettings.presetName}
-                </p>
             </section>
 
             <section className="card">

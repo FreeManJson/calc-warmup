@@ -14,6 +14,7 @@ import {
 
 type PhaseType = 'countdown' | 'active' | 'feedback';
 type ActiveInputModeType = 'keyboard' | 'tile';
+type FeedbackKindType = 'correct' | 'wrong' | 'timeout' | null;
 
 export function QuizPage () {
     const navigate = useNavigate();
@@ -34,8 +35,12 @@ export function QuizPage () {
     const [pausedAt, setPausedAt] = useState<number | null>(null);
     const [pausedMs, setPausedMs] = useState<number>(0);
     const [nowTick, setNowTick] = useState<number>(Date.now());
+    const [remainingMsDisplay, setRemainingMsDisplay] = useState<number | null>(null);
     const [feedbackClassName, setFeedbackClassName] = useState<string>('');
     const [feedbackText, setFeedbackText] = useState<string>('');
+    const [feedbackKind, setFeedbackKind] = useState<FeedbackKindType>(null);
+    const [feedbackSymbol, setFeedbackSymbol] = useState<string>('');
+    const [feedbackDetailText, setFeedbackDetailText] = useState<string>('');
     const [activeInputMode, setActiveInputMode] = useState<ActiveInputModeType>(() => {
         return resolveInitialInteractiveInputMode('auto');
     });
@@ -60,18 +65,6 @@ export function QuizPage () {
         const effectiveNow = (pausedAt ?? nowTick);
         return Math.max(0, (effectiveNow - questionStartedAt - pausedMs));
     }, [questionStartedAt, pausedAt, nowTick, pausedMs]);
-
-    const remainingMs = useMemo(() => {
-        if (
-            (currentQuiz == null) ||
-            (currentQuiz.settingsSnapshot.timeLimitEnabled === false)
-        ) {
-            return null;
-        }
-
-        const limitMs = (currentQuiz.settingsSnapshot.timeLimitSec * 1000);
-        return Math.max(0, (limitMs - elapsedMs));
-    }, [currentQuiz, elapsedMs]);
 
     const paused = (pausedAt != null);
 
@@ -113,6 +106,14 @@ export function QuizPage () {
         setNowTick(Date.now());
         setFeedbackClassName('');
         setFeedbackText('');
+        setFeedbackKind(null);
+        setFeedbackSymbol('');
+        setFeedbackDetailText('');
+        setRemainingMsDisplay(
+            currentQuiz.settingsSnapshot.timeLimitEnabled === true
+                ? (currentQuiz.settingsSnapshot.timeLimitSec * 1000)
+                : null
+        );
         setActiveInputMode(
             resolveInitialInteractiveInputMode(currentQuiz.settingsSnapshot.inputMethod)
         );
@@ -129,6 +130,16 @@ export function QuizPage () {
             setPausedAt(null);
             setPausedMs(0);
             setNowTick(Date.now());
+
+            if (
+                (currentQuiz != null) &&
+                (currentQuiz.settingsSnapshot.timeLimitEnabled === true)
+            ) {
+                setRemainingMsDisplay(currentQuiz.settingsSnapshot.timeLimitSec * 1000);
+            } else {
+                setRemainingMsDisplay(null);
+            }
+
             return;
         }
 
@@ -141,7 +152,7 @@ export function QuizPage () {
         return () => {
             window.clearTimeout(timerId);
         };
-    }, [phase, countdownValue]);
+    }, [phase, countdownValue, currentQuiz]);
 
     useEffect(() => {
         if ((phase !== 'active') || (pausedAt != null)) {
@@ -199,6 +210,15 @@ export function QuizPage () {
         setNowTick(Date.now());
         setFeedbackClassName('');
         setFeedbackText('');
+        setFeedbackKind(null);
+        setFeedbackSymbol('');
+        setFeedbackDetailText('');
+
+        if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
+            setRemainingMsDisplay(currentQuiz.settingsSnapshot.timeLimitSec * 1000);
+        } else {
+            setRemainingMsDisplay(null);
+        }
     }, [
         currentQuiz,
         currentIndex,
@@ -273,15 +293,24 @@ export function QuizPage () {
 
         if (mode === 'timeout') {
             setFeedbackClassName('feedback-timeout');
-            setFeedbackText(`時間切れ！ 正解: ${currentQuestion.correctText}`);
+            setFeedbackText('時間切れ');
+            setFeedbackKind('timeout');
+            setFeedbackSymbol('!');
+            setFeedbackDetailText(`正解: ${currentQuestion.correctText}`);
             delayMs = FEEDBACK_DELAY_MS.timeout;
         } else if (isCorrect === true) {
             setFeedbackClassName('feedback-correct');
-            setFeedbackText(`正解！ ${answerRecord.score}点`);
+            setFeedbackText('正解');
+            setFeedbackKind('correct');
+            setFeedbackSymbol('○');
+            setFeedbackDetailText(`+${answerRecord.score}点`);
             delayMs = FEEDBACK_DELAY_MS.correct;
         } else {
             setFeedbackClassName('feedback-wrong');
-            setFeedbackText(`不正解。正解: ${currentQuestion.correctText}`);
+            setFeedbackText('不正解');
+            setFeedbackKind('wrong');
+            setFeedbackSymbol('×');
+            setFeedbackDetailText(`正解: ${currentQuestion.correctText}`);
             delayMs = FEEDBACK_DELAY_MS.wrong;
         }
 
@@ -320,11 +349,16 @@ export function QuizPage () {
             if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
                 const elapsed = Math.max(0, (now - questionStartedAt - pausedMs));
                 const limitMs = (currentQuiz.settingsSnapshot.timeLimitSec * 1000);
+                const remainingMs = Math.max(0, (limitMs - elapsed));
+
+                setRemainingMsDisplay(remainingMs);
 
                 if (elapsed >= limitMs) {
                     window.clearInterval(intervalId);
                     handleSettleCurrentQuestion('timeout');
                 }
+            } else {
+                setRemainingMsDisplay(null);
             }
         }, 100);
 
@@ -376,6 +410,9 @@ export function QuizPage () {
         if (started === true) {
             setFeedbackText('');
             setFeedbackClassName('');
+            setFeedbackKind(null);
+            setFeedbackSymbol('');
+            setFeedbackDetailText('');
         }
     }
 
@@ -566,9 +603,9 @@ export function QuizPage () {
                                 <strong>経過時間:</strong> {Math.ceil(elapsedMs / 100) / 10} 秒
                             </div>
 
-                            {remainingMs != null && (
+                            {remainingMsDisplay != null && (
                                 <div className="timer-badge">
-                                    残り: {Math.ceil(remainingMs / 100) / 10} 秒
+                                    残り: {Math.ceil(remainingMsDisplay / 100) / 10} 秒
                                 </div>
                             )}
                         </div>
@@ -696,21 +733,6 @@ export function QuizPage () {
                         </p>
                     </section>
 
-                    {currentQuiz.settingsSnapshot.handwritingMemoEnabled === true && (
-                        <section className="card">
-                            <h2>メモ欄（ダミー）</h2>
-                            <div className="memo-dummy">
-                                将来的にここへ手書きメモを実装
-                            </div>
-                        </section>
-                    )}
-
-                    {feedbackText.length > 0 && (
-                        <section className={`card feedback-box ${feedbackClassName}`}>
-                            <strong>{feedbackText}</strong>
-                        </section>
-                    )}
-
                     {paused === true && (
                         <section className="card paused-box">
                             <strong>一時停止中</strong>
@@ -718,6 +740,18 @@ export function QuizPage () {
                         </section>
                     )}
                 </>
+            )}
+
+            {feedbackKind != null && (
+                <div className={`feedback-overlay ${feedbackClassName}`}>
+                    <div className="feedback-overlay-panel">
+                        <div className="feedback-symbol">{feedbackSymbol}</div>
+                        <div className="feedback-title">{feedbackText}</div>
+                        {feedbackDetailText.length > 0 && (
+                            <div className="feedback-detail">{feedbackDetailText}</div>
+                        )}
+                    </div>
+                </div>
             )}
         </div>
     );

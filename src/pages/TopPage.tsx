@@ -220,7 +220,7 @@ export function TopPage () {
                         各項目の最大桁数:
                         {' '}
                         {visibleTermDigits.map((digits, index) => {
-                            return `${index + 1}項目目 ${digits}桁`;
+                            return `${index + 1}項目め ${digits}桁`;
                         }).join(' / ')}
                     </li>
                     <li>出題数: {quizSettings.questionCount}問</li>
@@ -231,7 +231,6 @@ export function TopPage () {
                             : ' なし'}
                     </li>
                     <li>入力方式: {getInputMethodLabel(quizSettings.inputMethod)}</li>
-                    <li>プリセット: {quizSettings.presetName}</li>
                 </ul>
             </section>
 
