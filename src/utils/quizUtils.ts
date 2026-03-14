@@ -2,10 +2,9 @@ import {
     REAL_DIVISION_DECIMAL_DIGITS,
 } from '../constants/appConstants';
 import type {
-    AnswerResult,
     CourseType,
     GeneratedQuestion,
-    QuizResult,
+    QuestionDifficultyInput,
     QuizSettings,
 } from '../types/appTypes';
 
@@ -99,77 +98,6 @@ export function compareAnswer (
     };
 }
 
-export function calculateQuestionScore (
-    question: GeneratedQuestion,
-    isCorrect: boolean,
-    elapsedMs: number,
-    settings: QuizSettings
-): number {
-    let targetMs = 3500;
-
-    targetMs += ((settings.maxTerms - 2) * 500);
-
-    const maxDigits = Math.max(...settings.termMaxDigits.slice(0, settings.maxTerms), 1);
-    targetMs += ((maxDigits - 1) * 250);
-
-    if (settings.timeLimitEnabled === true) {
-        targetMs = (settings.timeLimitSec * 1000);
-    }
-
-    if (isCorrect === false) {
-        return 0;
-    }
-
-    const speedFactorBase = (targetMs / Math.max(elapsedMs, 300));
-    const speedFactor = clamp(speedFactorBase, 0.6, 1.4);
-    const rawScore = (100 * question.difficulty * speedFactor);
-
-    return Math.round(rawScore);
-}
-
-export function buildQuizResult (
-    userName: string,
-    settings: QuizSettings,
-    answers: AnswerResult[]
-): QuizResult {
-    const totalQuestions = answers.length;
-    const correctCount = answers.filter((answer) => {
-        return (answer.isCorrect === true);
-    }).length;
-
-    const totalElapsedMs = answers.reduce((sum, answer) => {
-        return (sum + answer.elapsedMs);
-    }, 0);
-
-    const totalScore = answers.reduce((sum, answer) => {
-        return (sum + answer.score);
-    }, 0);
-
-    const accuracyRate = (
-        totalQuestions > 0
-            ? Math.round((correctCount / totalQuestions) * 100)
-            : 0
-    );
-
-    const averageAnswerMs = (
-        totalQuestions > 0
-            ? Math.round(totalElapsedMs / totalQuestions)
-            : 0
-    );
-
-    return {
-        userName,
-        courseLabel: getCourseLabelText(settings.selectedCourses),
-        totalQuestions,
-        correctCount,
-        accuracyRate,
-        averageAnswerMs,
-        score: totalScore,
-        playedAt: formatDateTime(new Date()),
-        answers,
-    };
-}
-
 export function formatNumber (
     value: number,
     fractionDigits: number = 2
@@ -243,6 +171,28 @@ function generateAdditionQuestion (
         return `+ (${formatNumber(value, 1)})`;
     }).join(' ');
 
+    const difficultyInput: QuestionDifficultyInput = {
+        course: 'add',
+        termCount: operands.length,
+        operatorsUsedCount: 1,
+        hasMixedOperators: false,
+        hasDecimalOperand: operands.some((value) => {
+            return (Number.isInteger(value) === false);
+        }),
+        hasNegativeOperand: operands.some((value) => {
+            return (value < 0);
+        }),
+        resultIsNegative: (answer < 0),
+        maxDigits: Math.max(...operands.map((value) => {
+            return getDisplayDigitCount(value);
+        })),
+        hasCarryOrBorrow: detectCarryInAddition(operands),
+        hasParentheses: false,
+        hasPriorityOperation: false,
+        hasRemainder: false,
+        hasRealDivision: false,
+    };
+
     return {
         id: `q-add-${index}-${Date.now()}`,
         course: 'add',
@@ -251,7 +201,7 @@ function generateAdditionQuestion (
         correctText: formatNumber(answer, 1),
         expectedNumber: answer,
         tolerance: (settings.allowDecimal === true ? 0.001 : 0.0001),
-        difficulty: calculateDifficulty('add', settings, termCount),
+        difficultyInput,
     };
 }
 
@@ -287,6 +237,30 @@ function generateSubtractionQuestion (
         return formatNumber(value, 1);
     }).join(' - ');
 
+    const allOperands = [firstOperand, ...subOperands];
+
+    const difficultyInput: QuestionDifficultyInput = {
+        course: 'sub',
+        termCount: allOperands.length,
+        operatorsUsedCount: 1,
+        hasMixedOperators: false,
+        hasDecimalOperand: allOperands.some((value) => {
+            return (Number.isInteger(value) === false);
+        }),
+        hasNegativeOperand: allOperands.some((value) => {
+            return (value < 0);
+        }),
+        resultIsNegative: (answer < 0),
+        maxDigits: Math.max(...allOperands.map((value) => {
+            return getDisplayDigitCount(value);
+        })),
+        hasCarryOrBorrow: detectBorrowInSubtraction(firstOperand, subOperands),
+        hasParentheses: false,
+        hasPriorityOperation: false,
+        hasRemainder: false,
+        hasRealDivision: false,
+    };
+
     return {
         id: `q-sub-${index}-${Date.now()}`,
         course: 'sub',
@@ -295,7 +269,7 @@ function generateSubtractionQuestion (
         correctText: formatNumber(answer, 1),
         expectedNumber: answer,
         tolerance: (settings.allowDecimal === true ? 0.001 : 0.0001),
-        difficulty: calculateDifficulty('sub', settings, termCount),
+        difficultyInput,
     };
 }
 
@@ -331,6 +305,28 @@ function generateMultiplicationQuestion (
         return wrapIfNegative(value);
     }).join(' × ');
 
+    const difficultyInput: QuestionDifficultyInput = {
+        course: 'mul',
+        termCount: operands.length,
+        operatorsUsedCount: 1,
+        hasMixedOperators: false,
+        hasDecimalOperand: operands.some((value) => {
+            return (Number.isInteger(value) === false);
+        }),
+        hasNegativeOperand: operands.some((value) => {
+            return (value < 0);
+        }),
+        resultIsNegative: (answer < 0),
+        maxDigits: Math.max(...operands.map((value) => {
+            return getDisplayDigitCount(value);
+        })),
+        hasCarryOrBorrow: false,
+        hasParentheses: false,
+        hasPriorityOperation: false,
+        hasRemainder: false,
+        hasRealDivision: false,
+    };
+
     return {
         id: `q-mul-${index}-${Date.now()}`,
         course: 'mul',
@@ -339,7 +335,7 @@ function generateMultiplicationQuestion (
         correctText: formatNumber(answer, 2),
         expectedNumber: answer,
         tolerance: (settings.allowDecimal === true ? 0.001 : 0.0001),
-        difficulty: calculateDifficulty('mul', settings, termCount),
+        difficultyInput,
     };
 }
 
@@ -357,6 +353,25 @@ function generateDivisionQuestion (
         const remainder = randomInt(1, (divisor - 1));
         const dividend = ((divisor * quotient) + remainder);
 
+        const difficultyInput: QuestionDifficultyInput = {
+            course: 'div',
+            termCount: 2,
+            operatorsUsedCount: 1,
+            hasMixedOperators: false,
+            hasDecimalOperand: false,
+            hasNegativeOperand: (dividend < 0) || (divisor < 0),
+            resultIsNegative: false,
+            maxDigits: Math.max(
+                getDisplayDigitCount(dividend),
+                getDisplayDigitCount(divisor)
+            ),
+            hasCarryOrBorrow: false,
+            hasParentheses: false,
+            hasPriorityOperation: false,
+            hasRemainder: true,
+            hasRealDivision: false,
+        };
+
         return {
             id: `q-div-${index}-${Date.now()}`,
             course: 'div',
@@ -365,7 +380,7 @@ function generateDivisionQuestion (
             correctText: `商 ${quotient} / 余り ${remainder}`,
             expectedParts: [quotient, remainder],
             inputHint: '商と余りを半角スペース区切りで入力（例: 12 3）',
-            difficulty: calculateDifficulty('div', settings, 2),
+            difficultyInput,
         };
     }
 
@@ -373,6 +388,25 @@ function generateDivisionQuestion (
         const dividend = createIntegerOperand(Math.min(getDigitsForTerm(0, settings), 4));
         const rawAnswer = (dividend / divisor);
         const roundedAnswer = Number(rawAnswer.toFixed(REAL_DIVISION_DECIMAL_DIGITS));
+
+        const difficultyInput: QuestionDifficultyInput = {
+            course: 'div',
+            termCount: 2,
+            operatorsUsedCount: 1,
+            hasMixedOperators: false,
+            hasDecimalOperand: false,
+            hasNegativeOperand: (dividend < 0) || (divisor < 0),
+            resultIsNegative: (roundedAnswer < 0),
+            maxDigits: Math.max(
+                getDisplayDigitCount(dividend),
+                getDisplayDigitCount(divisor)
+            ),
+            hasCarryOrBorrow: false,
+            hasParentheses: false,
+            hasPriorityOperation: false,
+            hasRemainder: false,
+            hasRealDivision: true,
+        };
 
         return {
             id: `q-div-${index}-${Date.now()}`,
@@ -383,7 +417,7 @@ function generateDivisionQuestion (
             expectedNumber: roundedAnswer,
             tolerance: 0.005,
             inputHint: `小数第${REAL_DIVISION_DECIMAL_DIGITS}位までで入力`,
-            difficulty: calculateDifficulty('div', settings, 2),
+            difficultyInput,
         };
     }
 
@@ -395,6 +429,25 @@ function generateDivisionQuestion (
 
     const dividend = (divisor * quotient);
 
+    const difficultyInput: QuestionDifficultyInput = {
+        course: 'div',
+        termCount: 2,
+        operatorsUsedCount: 1,
+        hasMixedOperators: false,
+        hasDecimalOperand: false,
+        hasNegativeOperand: (dividend < 0) || (divisor < 0),
+        resultIsNegative: (quotient < 0),
+        maxDigits: Math.max(
+            getDisplayDigitCount(dividend),
+            getDisplayDigitCount(divisor)
+        ),
+        hasCarryOrBorrow: false,
+        hasParentheses: false,
+        hasPriorityOperation: false,
+        hasRemainder: false,
+        hasRealDivision: false,
+    };
+
     return {
         id: `q-div-${index}-${Date.now()}`,
         course: 'div',
@@ -403,63 +456,8 @@ function generateDivisionQuestion (
         correctText: quotient.toString(),
         expectedNumber: quotient,
         tolerance: 0.0001,
-        difficulty: calculateDifficulty('div', settings, 2),
+        difficultyInput,
     };
-}
-
-function calculateDifficulty (
-    course: CourseType,
-    settings: QuizSettings,
-    termCount: number
-): number {
-    let difficulty = 1.0;
-
-    switch (course) {
-        case 'add':
-            difficulty = 1.00;
-            break;
-
-        case 'sub':
-            difficulty = 1.12;
-            break;
-
-        case 'mul':
-            difficulty = 1.35;
-            break;
-
-        case 'div':
-            difficulty = 1.55;
-            break;
-
-        default:
-            difficulty = 1.00;
-            break;
-    }
-
-    difficulty += ((termCount - 2) * 0.08);
-
-    const visibleDigits = settings.termMaxDigits.slice(0, settings.maxTerms);
-    const maxDigits = Math.max(...visibleDigits, 1);
-
-    difficulty += ((maxDigits - 1) * 0.07);
-
-    if (settings.allowNegative === true) {
-        difficulty += 0.10;
-    }
-
-    if (settings.allowDecimal === true) {
-        difficulty += 0.15;
-    }
-
-    if (settings.allowRealDivision === true) {
-        difficulty += 0.18;
-    }
-
-    if (settings.allowRemainder === true) {
-        difficulty += 0.12;
-    }
-
-    return Number(difficulty.toFixed(2));
 }
 
 function getDigitsForTerm (
@@ -513,14 +511,6 @@ function roundIfNeeded (
     return Math.round(value);
 }
 
-function clamp (
-    value: number,
-    minValue: number,
-    maxValue: number
-): number {
-    return Math.min(Math.max(value, minValue), maxValue);
-}
-
 function randomInt (
     minValue: number,
     maxValue: number
@@ -531,13 +521,116 @@ function randomInt (
     return Math.floor((Math.random() * ((max - min) + 1)) + min);
 }
 
-function formatDateTime (date: Date): string {
-    const year = date.getFullYear();
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-    const hour = `${date.getHours()}`.padStart(2, '0');
-    const minute = `${date.getMinutes()}`.padStart(2, '0');
-    const second = `${date.getSeconds()}`.padStart(2, '0');
+function getDisplayDigitCount (value: number): number {
+    const absValue = Math.abs(value);
+    const integerPart = Math.floor(absValue);
 
-    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    if (integerPart >= 1) {
+        return integerPart.toString().length;
+    }
+
+    return 1;
+}
+
+function detectCarryInAddition (operands: number[]): boolean {
+    const canCheck = operands.every((value) => {
+        return (
+            (Number.isInteger(value) === true) &&
+            (value >= 0)
+        );
+    });
+
+    if (canCheck === false) {
+        return false;
+    }
+
+    const maxDigits = Math.max(...operands.map((value) => {
+        return getDisplayDigitCount(value);
+    }));
+
+    let carry = 0;
+
+    for (let lpDigit = 0; lpDigit < maxDigits; lpDigit += 1) {
+        let digitSum = carry;
+
+        operands.forEach((value) => {
+            digitSum += getDigitAt(value, lpDigit);
+        });
+
+        if (digitSum >= 10) {
+            return true;
+        }
+
+        carry = Math.floor(digitSum / 10);
+    }
+
+    return false;
+}
+
+function detectBorrowInSubtraction (
+    firstOperand: number,
+    subOperands: number[]
+): boolean {
+    const allValues = [firstOperand, ...subOperands];
+    const canCheck = allValues.every((value) => {
+        return (
+            (Number.isInteger(value) === true) &&
+            (value >= 0)
+        );
+    });
+
+    if (canCheck === false) {
+        return false;
+    }
+
+    let currentValue = firstOperand;
+
+    for (let lpIndex = 0; lpIndex < subOperands.length; lpIndex += 1) {
+        const nextValue = subOperands[lpIndex];
+
+        if (detectBorrowInPair(currentValue, nextValue) === true) {
+            return true;
+        }
+
+        currentValue -= nextValue;
+    }
+
+    return false;
+}
+
+function detectBorrowInPair (
+    minuend: number,
+    subtrahend: number
+): boolean {
+    if (minuend < subtrahend) {
+        return true;
+    }
+
+    const maxDigits = Math.max(
+        getDisplayDigitCount(minuend),
+        getDisplayDigitCount(subtrahend)
+    );
+
+    let borrow = 0;
+
+    for (let lpDigit = 0; lpDigit < maxDigits; lpDigit += 1) {
+        const left = (getDigitAt(minuend, lpDigit) - borrow);
+        const right = getDigitAt(subtrahend, lpDigit);
+
+        if (left < right) {
+            return true;
+        }
+
+        borrow = 0;
+    }
+
+    return false;
+}
+
+function getDigitAt (
+    value: number,
+    digitIndex: number
+): number {
+    const absValue = Math.abs(Math.floor(value));
+    return Math.floor(absValue / Math.pow(10, digitIndex)) % 10;
 }

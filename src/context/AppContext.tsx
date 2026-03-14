@@ -27,6 +27,9 @@ import type {
 import {
     generateQuestions,
 } from '../utils/quizUtils';
+import {
+    createRankingEntryFromResult,
+} from '../utils/scoreUtils';
 
 interface AddUserResult {
     ok: boolean;
@@ -240,35 +243,33 @@ export function AppProvider (
     }, []);
 
     const finishQuiz = useCallback((result: QuizResult) => {
-        const rankingEntry: RankingEntry = {
-            id: `rank-${Date.now()}`,
-            userName: result.userName,
-            courseLabel: result.courseLabel,
-            score: result.score,
-            accuracyRate: result.accuracyRate,
-            averageAnswerMs: result.averageAnswerMs,
-            playedAt: result.playedAt,
-        };
-
         setLatestResult(result);
 
-        setRanking((prevRanking) => {
-            const nextRanking = [...prevRanking, rankingEntry];
+        if (result.rankingEligible === true) {
+            const rankingEntry = createRankingEntryFromResult(result);
 
-            nextRanking.sort((left, right) => {
-                if (left.score !== right.score) {
-                    return (right.score - left.score);
-                }
+            setRanking((prevRanking) => {
+                const nextRanking = [...prevRanking, rankingEntry];
 
-                if (left.accuracyRate !== right.accuracyRate) {
-                    return (right.accuracyRate - left.accuracyRate);
-                }
+                nextRanking.sort((left, right) => {
+                    if (left.rankingScore !== right.rankingScore) {
+                        return (right.rankingScore - left.rankingScore);
+                    }
 
-                return (left.averageAnswerMs - right.averageAnswerMs);
+                    if (left.averageQuestionScore !== right.averageQuestionScore) {
+                        return (right.averageQuestionScore - left.averageQuestionScore);
+                    }
+
+                    if (left.accuracyRate !== right.accuracyRate) {
+                        return (right.accuracyRate - left.accuracyRate);
+                    }
+
+                    return (left.averageAnswerMs - right.averageAnswerMs);
+                });
+
+                return nextRanking.slice(0, TOP_RANKING_COUNT);
             });
-
-            return nextRanking.slice(0, TOP_RANKING_COUNT);
-        });
+        }
 
         setCurrentQuiz(null);
     }, []);

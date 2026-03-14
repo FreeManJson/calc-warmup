@@ -50,11 +50,20 @@ export function ResultPage () {
                 <ul className="simple-list">
                     <li>ユーザー: {latestResult.userName}</li>
                     <li>コース: {latestResult.courseLabel}</li>
-                    <li>総問題数: {latestResult.totalQuestions}</li>
+                    <li>出題数: {latestResult.totalQuestions}</li>
                     <li>正答数: {latestResult.correctCount}</li>
                     <li>正答率: {latestResult.accuracyRate}%</li>
                     <li>平均回答時間: {latestResult.averageAnswerMs} ms</li>
-                    <li>スコア: {latestResult.score}</li>
+                    <li>総得点: {latestResult.totalScore}</li>
+                    <li>1問平均点: {latestResult.averageQuestionScore}</li>
+                    <li>出題数ボーナス係数: ×{latestResult.questionCountBonusFactor}</li>
+                    <li>ランキング用スコア: {latestResult.rankingScore}</li>
+                    <li>
+                        ランキング反映:
+                        {latestResult.rankingEligible === true
+                            ? ' 対象'
+                            : ` 対象外（${latestResult.rankingIneligibleReason ?? '理由なし'}）`}
+                    </li>
                     <li>日時: {latestResult.playedAt}</li>
                 </ul>
             </section>
@@ -65,14 +74,18 @@ export function ResultPage () {
                 <table className="result-table">
                     <thead>
                         <tr>
-                            <th>№</th>
+                            <th>No</th>
                             <th>コース</th>
                             <th>問題</th>
                             <th>回答</th>
                             <th>正解</th>
                             <th>判定</th>
-                            <th>時間</th>
-                            <th>点</th>
+                            <th>時間(ms)</th>
+                            <th>難易度点</th>
+                            <th>期待時間(ms)</th>
+                            <th>速度係数</th>
+                            <th>制限係数</th>
+                            <th>得点</th>
                         </tr>
                     </thead>
 
@@ -90,7 +103,11 @@ export function ResultPage () {
                                             ? '時間切れ'
                                             : (answer.isCorrect === true ? '〇' : '×')}
                                     </td>
-                                    <td>{answer.elapsedMs} ms</td>
+                                    <td>{answer.elapsedMs}</td>
+                                    <td>{answer.scoreDetail.difficultyScore}</td>
+                                    <td>{answer.scoreDetail.expectedTimeMs}</td>
+                                    <td>{answer.scoreDetail.speedFactor.toFixed(2)}</td>
+                                    <td>{answer.scoreDetail.timeLimitFactor.toFixed(2)}</td>
                                     <td>{answer.score}</td>
                                 </tr>
                             );

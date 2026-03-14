@@ -4,11 +4,13 @@ import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
 import type { AnswerResult, InputMethodType } from '../types/appTypes';
 import {
-    buildQuizResult,
-    calculateQuestionScore,
     compareAnswer,
     getCourseLabel,
 } from '../utils/quizUtils';
+import {
+    buildQuizResult,
+    evaluateQuestionScore,
+} from '../utils/scoreUtils';
 
 type PhaseType = 'countdown' | 'active' | 'feedback';
 type ActiveInputModeType = 'keyboard' | 'tile';
@@ -178,7 +180,8 @@ export function QuizPage () {
             const result = buildQuizResult(
                 userName,
                 currentQuiz.settingsSnapshot,
-                nextAnswers
+                nextAnswers,
+                { completed: true }
             );
 
             finishQuiz(result);
@@ -232,6 +235,13 @@ export function QuizPage () {
             (compareResult.isCorrect === true)
         );
 
+        const scoreDetail = evaluateQuestionScore(
+            currentQuestion,
+            effectiveElapsedMs,
+            isCorrect,
+            currentQuiz.settingsSnapshot
+        );
+
         const answerRecord: AnswerResult = {
             questionId: currentQuestion.id,
             questionText: currentQuestion.expression,
@@ -249,12 +259,8 @@ export function QuizPage () {
             isCorrect,
             isTimeout: (mode === 'timeout'),
             elapsedMs: effectiveElapsedMs,
-            score: calculateQuestionScore(
-                currentQuestion,
-                isCorrect,
-                effectiveElapsedMs,
-                currentQuiz.settingsSnapshot
-            ),
+            score: scoreDetail.questionScore,
+            scoreDetail,
         };
 
         const nextAnswers = [...answers, answerRecord];

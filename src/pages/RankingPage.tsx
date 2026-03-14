@@ -46,10 +46,13 @@ export function RankingPage () {
                             <tr>
                                 <th>順位</th>
                                 <th>ユーザー</th>
-                                <th>コース</th>
-                                <th>スコア</th>
+                                <th>ランキング用スコア</th>
+                                <th>1問平均点</th>
+                                <th>総得点</th>
+                                <th>出題数</th>
                                 <th>正答率</th>
                                 <th>平均時間</th>
+                                <th>コース</th>
                                 <th>日時</th>
                             </tr>
                         </thead>
@@ -60,10 +63,13 @@ export function RankingPage () {
                                     <tr key={entry.id}>
                                         <td>{index + 1}</td>
                                         <td>{entry.userName}</td>
-                                        <td>{entry.courseLabel}</td>
-                                        <td>{entry.score}</td>
+                                        <td>{entry.rankingScore}</td>
+                                        <td>{entry.averageQuestionScore}</td>
+                                        <td>{entry.totalScore}</td>
+                                        <td>{entry.totalQuestions}</td>
                                         <td>{entry.accuracyRate}%</td>
                                         <td>{entry.averageAnswerMs} ms</td>
+                                        <td>{entry.courseLabel}</td>
                                         <td>{entry.playedAt}</td>
                                     </tr>
                                 );
