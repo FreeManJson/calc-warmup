@@ -57,25 +57,25 @@ export function ResultPage () {
         });
     }
 
-    function renderRankingMessage () {
-        if (latestResult.rankingEligible === false) {
+    function renderRankingMessage (result: NonNullable<typeof latestResult>) {
+        if (result.rankingEligible === false) {
             return (
                 <section className="card achievement-card achievement-card-muted">
                     <div className="achievement-title">ランキング反映なし</div>
                     <div className="achievement-text">
-                        {latestResult.rankingIneligibleReason ?? 'ランキング対象外です。'}
+                        {result.rankingIneligibleReason ?? 'ランキング対象外です。'}
                     </div>
                 </section>
             );
         }
 
-        if ((latestResult.rankingPlacement ?? null) != null) {
+        if ((result.rankingPlacement ?? null) != null) {
             return (
                 <section className="card achievement-card achievement-card-highlight">
                     <div className="achievement-row">
                         <div>
                             <div className="achievement-title">
-                                ランキング {latestResult.rankingPlacement}位 に入りました！
+                                ランキング {result.rankingPlacement}位 に入りました！
                             </div>
                             <div className="achievement-text">
                                 TOP{TOP_RANKING_COUNT} にランクインしました。
@@ -102,7 +102,7 @@ export function ResultPage () {
         <div className="page-container">
             <h1>結果画面</h1>
 
-            {renderRankingMessage()}
+            {renderRankingMessage(latestResult)}
 
             <section className="card">
                 <h2>結果サマリ</h2>
