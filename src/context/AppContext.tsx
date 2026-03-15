@@ -50,6 +50,7 @@ interface AppContextType {
     currentQuiz: CurrentQuiz | null;
     latestResult: QuizResult | null;
     ranking: RankingEntry[];
+    lastRankingEntryId: string | null;
     startQuiz: (overrideSettings?: QuizSettings) => boolean;
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
@@ -124,6 +125,7 @@ export function AppProvider (
     });
 
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
+    const [lastRankingEntryId, setLastRankingEntryId] = useState<string | null>(null);
 
     useEffect(() => {
         if (users.length <= 0) {
@@ -243,36 +245,61 @@ export function AppProvider (
     }, []);
 
     const finishQuiz = useCallback((result: QuizResult) => {
-        setLatestResult(result);
+        let nextLatestResult: QuizResult = {
+            ...result,
+            rankingPlacement: null,
+            rankingEntryId: null,
+        };
+        let nextLastRankingEntryId: string | null = null;
 
         if (result.rankingEligible === true) {
             const rankingEntry = createRankingEntryFromResult(result);
+            const nextRanking = [...ranking, rankingEntry];
 
-            setRanking((prevRanking) => {
-                const nextRanking = [...prevRanking, rankingEntry];
+            nextRanking.sort(compareRankingEntries);
 
-                nextRanking.sort((left, right) => {
-                    if (left.rankingScore !== right.rankingScore) {
-                        return (right.rankingScore - left.rankingScore);
-                    }
-
-                    if (left.averageQuestionScore !== right.averageQuestionScore) {
-                        return (right.averageQuestionScore - left.averageQuestionScore);
-                    }
-
-                    if (left.accuracyRate !== right.accuracyRate) {
-                        return (right.accuracyRate - left.accuracyRate);
-                    }
-
-                    return (left.averageAnswerMs - right.averageAnswerMs);
-                });
-
-                return nextRanking.slice(0, TOP_RANKING_COUNT);
+            const trimmedRanking = nextRanking.slice(0, TOP_RANKING_COUNT);
+            const placementIndex = trimmedRanking.findIndex((entry) => {
+                return (entry.id === rankingEntry.id);
             });
+
+            const rankingPlacement = (
+                placementIndex >= 0
+                    ? (placementIndex + 1)
+                    : null
+            );
+
+            nextLatestResult = {
+                ...result,
+                rankingPlacement,
+                rankingEntryId: (
+                    rankingPlacement != null
+                        ? rankingEntry.id
+                        : null
+                ),
+            };
+
+            nextLastRankingEntryId = (
+                rankingPlacement != null
+                    ? rankingEntry.id
+                    : null
+            );
+
+            setRanking(trimmedRanking);
         }
 
+        else {
+            nextLatestResult = {
+                ...result,
+                rankingPlacement: null,
+                rankingEntryId: null,
+            };
+        }
+
+        setLatestResult(nextLatestResult);
+        setLastRankingEntryId(nextLastRankingEntryId);
         setCurrentQuiz(null);
-    }, []);
+    }, [ranking]);
 
     const addUser = useCallback((name: string): AddUserResult => {
         const trimmed = name.trim();
@@ -366,6 +393,7 @@ export function AppProvider (
 
     const clearRanking = useCallback(() => {
         setRanking([]);
+        setLastRankingEntryId(null);
     }, []);
 
     const contextValue = useMemo<AppContextType>(() => {
@@ -378,6 +406,7 @@ export function AppProvider (
             currentQuiz,
             latestResult,
             ranking,
+            lastRankingEntryId,
             startQuiz,
             clearQuiz,
             finishQuiz,
@@ -394,6 +423,7 @@ export function AppProvider (
         currentQuiz,
         latestResult,
         ranking,
+        lastRankingEntryId,
         startQuiz,
         clearQuiz,
         finishQuiz,
@@ -561,6 +591,25 @@ function isInputMethodType (value: unknown): value is InputMethodType {
         (value === 'keyboard') ||
         (value === 'tile')
     );
+}
+
+function compareRankingEntries (
+    left: RankingEntry,
+    right: RankingEntry
+): number {
+    if (left.rankingScore !== right.rankingScore) {
+        return (right.rankingScore - left.rankingScore);
+    }
+
+    if (left.averageQuestionScore !== right.averageQuestionScore) {
+        return (right.averageQuestionScore - left.averageQuestionScore);
+    }
+
+    if (left.accuracyRate !== right.accuracyRate) {
+        return (right.accuracyRate - left.accuracyRate);
+    }
+
+    return (left.averageAnswerMs - right.averageAnswerMs);
 }
 
 function readJson<T> (key: string, fallback: T): T {

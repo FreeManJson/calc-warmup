@@ -116,6 +116,8 @@ export interface QuizResult {
     completed: boolean;
     playedAt: string;
     answers: AnswerResult[];
+    rankingPlacement?: number | null;
+    rankingEntryId?: string | null;
 }
 
 export interface RankingEntry {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { TOP_RANKING_COUNT } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
 import { getCourseLabel } from '../utils/quizUtils';
 
@@ -56,9 +57,52 @@ export function ResultPage () {
         });
     }
 
+    function renderRankingMessage () {
+        if (latestResult.rankingEligible === false) {
+            return (
+                <section className="card achievement-card achievement-card-muted">
+                    <div className="achievement-title">ランキング反映なし</div>
+                    <div className="achievement-text">
+                        {latestResult.rankingIneligibleReason ?? 'ランキング対象外です。'}
+                    </div>
+                </section>
+            );
+        }
+
+        if ((latestResult.rankingPlacement ?? null) != null) {
+            return (
+                <section className="card achievement-card achievement-card-highlight">
+                    <div className="achievement-row">
+                        <div>
+                            <div className="achievement-title">
+                                ランキング {latestResult.rankingPlacement}位 に入りました！
+                            </div>
+                            <div className="achievement-text">
+                                TOP{TOP_RANKING_COUNT} にランクインしました。
+                            </div>
+                        </div>
+
+                        <span className="new-badge new-badge-large">NEW</span>
+                    </div>
+                </section>
+            );
+        }
+
+        return (
+            <section className="card achievement-card achievement-card-muted">
+                <div className="achievement-title">ランキング対象</div>
+                <div className="achievement-text">
+                    今回の結果はランキング対象ですが、TOP{TOP_RANKING_COUNT} 圏外でした。
+                </div>
+            </section>
+        );
+    }
+
     return (
         <div className="page-container">
             <h1>結果画面</h1>
+
+            {renderRankingMessage()}
 
             <section className="card">
                 <h2>結果サマリ</h2>
