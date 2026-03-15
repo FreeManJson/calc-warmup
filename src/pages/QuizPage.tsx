@@ -40,7 +40,9 @@ export function QuizPage () {
     const [feedbackText, setFeedbackText] = useState<string>('');
     const [feedbackKind, setFeedbackKind] = useState<FeedbackKindType>(null);
     const [feedbackSymbol, setFeedbackSymbol] = useState<string>('');
-    const [feedbackDetailText, setFeedbackDetailText] = useState<string>('');
+    const [feedbackEquationLeft, setFeedbackEquationLeft] = useState<string>('');
+    const [feedbackEquationAnswer, setFeedbackEquationAnswer] = useState<string>('');
+    const [feedbackSubText, setFeedbackSubText] = useState<string>('');
     const [activeInputMode, setActiveInputMode] = useState<ActiveInputModeType>(() => {
         return resolveInitialInteractiveInputMode('auto');
     });
@@ -108,7 +110,9 @@ export function QuizPage () {
         setFeedbackText('');
         setFeedbackKind(null);
         setFeedbackSymbol('');
-        setFeedbackDetailText('');
+        setFeedbackEquationLeft('');
+        setFeedbackEquationAnswer('');
+        setFeedbackSubText('');
         setRemainingMsDisplay(
             currentQuiz.settingsSnapshot.timeLimitEnabled === true
                 ? (currentQuiz.settingsSnapshot.timeLimitSec * 1000)
@@ -212,7 +216,9 @@ export function QuizPage () {
         setFeedbackText('');
         setFeedbackKind(null);
         setFeedbackSymbol('');
-        setFeedbackDetailText('');
+        setFeedbackEquationLeft('');
+        setFeedbackEquationAnswer('');
+        setFeedbackSubText('');
 
         if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
             setRemainingMsDisplay(currentQuiz.settingsSnapshot.timeLimitSec * 1000);
@@ -284,6 +290,10 @@ export function QuizPage () {
         };
 
         const nextAnswers = [...answers, answerRecord];
+        const feedbackEquation = buildFeedbackEquation(
+            currentQuestion.expression,
+            currentQuestion.correctText
+        );
 
         setAnswers(nextAnswers);
         setPhase('feedback');
@@ -296,21 +306,27 @@ export function QuizPage () {
             setFeedbackText('時間切れ');
             setFeedbackKind('timeout');
             setFeedbackSymbol('!');
-            setFeedbackDetailText(`正解: ${currentQuestion.correctText}`);
+            setFeedbackEquationLeft(feedbackEquation.leftText);
+            setFeedbackEquationAnswer(feedbackEquation.answerText);
+            setFeedbackSubText('時間内に解答できませんでした');
             delayMs = FEEDBACK_DELAY_MS.timeout;
         } else if (isCorrect === true) {
             setFeedbackClassName('feedback-correct');
             setFeedbackText('正解');
             setFeedbackKind('correct');
             setFeedbackSymbol('○');
-            setFeedbackDetailText(`+${answerRecord.score}点`);
+            setFeedbackEquationLeft(feedbackEquation.leftText);
+            setFeedbackEquationAnswer(feedbackEquation.answerText);
+            setFeedbackSubText(`+${answerRecord.score}点`);
             delayMs = FEEDBACK_DELAY_MS.correct;
         } else {
             setFeedbackClassName('feedback-wrong');
             setFeedbackText('不正解');
             setFeedbackKind('wrong');
             setFeedbackSymbol('×');
-            setFeedbackDetailText(`正解: ${currentQuestion.correctText}`);
+            setFeedbackEquationLeft(feedbackEquation.leftText);
+            setFeedbackEquationAnswer(feedbackEquation.answerText);
+            setFeedbackSubText(`あなたの回答: ${answerRecord.userAnswer}`);
             delayMs = FEEDBACK_DELAY_MS.wrong;
         }
 
@@ -412,7 +428,9 @@ export function QuizPage () {
             setFeedbackClassName('');
             setFeedbackKind(null);
             setFeedbackSymbol('');
-            setFeedbackDetailText('');
+            setFeedbackEquationLeft('');
+            setFeedbackEquationAnswer('');
+            setFeedbackSubText('');
         }
     }
 
@@ -747,8 +765,16 @@ export function QuizPage () {
                     <div className="feedback-overlay-panel">
                         <div className="feedback-symbol">{feedbackSymbol}</div>
                         <div className="feedback-title">{feedbackText}</div>
-                        {feedbackDetailText.length > 0 && (
-                            <div className="feedback-detail">{feedbackDetailText}</div>
+
+                        {(feedbackEquationLeft.length > 0) && (
+                            <div className="feedback-equation">
+                                <span className="feedback-equation-left">{feedbackEquationLeft}</span>
+                                <span className="feedback-equation-answer">{feedbackEquationAnswer}</span>
+                            </div>
+                        )}
+
+                        {feedbackSubText.length > 0 && (
+                            <div className="feedback-detail">{feedbackSubText}</div>
                         )}
                     </div>
                 </div>
@@ -784,4 +810,15 @@ function isProbablyMobileInputEnvironment (): boolean {
     const hasTouch = ('ontouchstart' in window);
 
     return (coarsePointer || hasTouch);
+}
+
+function buildFeedbackEquation (
+    expression: string,
+    correctText: string
+): { leftText: string; answerText: string } {
+    const normalizedLeft = expression.replace(/\s*=\s*\?\s*$/, ' = ');
+    return {
+        leftText: normalizedLeft,
+        answerText: correctText,
+    };
 }
