@@ -54,6 +54,7 @@ export function AdventurePage () {
     const [secretAppeared, setSecretAppeared] = useState<boolean>(false);
     const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
     const [questionStartedAt, setQuestionStartedAt] = useState<number | null>(null);
+    const [totalPausedMs, setTotalPausedMs] = useState<number>(0);
     const [nowTick, setNowTick] = useState<number>(Date.now());
     const [activeInputMode, setActiveInputMode] = useState<ActiveInputModeType>(() => {
         return resolveInitialInteractiveInputMode('auto');
@@ -69,6 +70,7 @@ export function AdventurePage () {
     const answerInputRef = useRef<HTMLInputElement | null>(null);
     const nextTimeoutRef = useRef<number | null>(null);
     const isComposingRef = useRef<boolean>(false);
+    const feedbackStartedAtRef = useRef<number | null>(null);
 
     const selectedDungeon = useMemo(() => {
         return getAdventureDungeonById(adventureTheme, selectedDungeonId);
@@ -98,12 +100,13 @@ export function AdventurePage () {
     }, [enemies, currentEnemyIndex]);
 
     const sessionElapsedMs = useMemo(() => {
-        if (sessionStartedAt == null) {
-            return 0;
-        }
-
-        return Math.max(0, (nowTick - sessionStartedAt));
-    }, [sessionStartedAt, nowTick]);
+        return getEffectiveSessionElapsedMs(
+            sessionStartedAt,
+            totalPausedMs,
+            feedbackStartedAtRef.current,
+            nowTick
+        );
+    }, [sessionStartedAt, totalPausedMs, nowTick]);
 
     const currentQuestionElapsedMs = useMemo(() => {
         if (questionStartedAt == null) {
@@ -135,6 +138,8 @@ export function AdventurePage () {
             : '1問目'
     );
 
+    const canSubmitCurrentAnswer = (inputValue.trim().length > 0);
+
     useEffect(() => {
         return () => {
             if (nextTimeoutRef.current != null) {
@@ -153,6 +158,8 @@ export function AdventurePage () {
             setPhase('active');
             setSessionStartedAt(now);
             setQuestionStartedAt(now);
+            setTotalPausedMs(0);
+            feedbackStartedAtRef.current = null;
             setNowTick(now);
             return;
         }
@@ -169,18 +176,22 @@ export function AdventurePage () {
     }, [phase, countdownValue]);
 
     useEffect(() => {
-        if ((phase !== 'active') && (phase !== 'feedback')) {
+        if (phase !== 'active') {
             return;
         }
 
         const intervalId = window.setInterval(() => {
             const now = Date.now();
+            const effectiveElapsedMs = getEffectiveSessionElapsedMs(
+                sessionStartedAt,
+                totalPausedMs,
+                feedbackStartedAtRef.current,
+                now
+            );
+
             setNowTick(now);
 
-            if (
-                (sessionStartedAt != null) &&
-                ((now - sessionStartedAt) >= (ADVENTURE_CONSTANTS.totalTimeSec * 1000))
-            ) {
+            if (effectiveElapsedMs >= (ADVENTURE_CONSTANTS.totalTimeSec * 1000)) {
                 window.clearInterval(intervalId);
                 finishAdventure({
                     finalBattleLog: battleLog,
@@ -196,6 +207,7 @@ export function AdventurePage () {
     }, [
         phase,
         sessionStartedAt,
+        totalPausedMs,
         battleLog,
         defeatedEnemySlots,
         secretAppeared,
@@ -256,7 +268,12 @@ export function AdventurePage () {
             dungeonId: selectedDungeonId,
             totalTimeSec: ADVENTURE_CONSTANTS.totalTimeSec,
             elapsedMs: Math.min(
-                Date.now() - (sessionStartedAt ?? Date.now()),
+                getEffectiveSessionElapsedMs(
+                    sessionStartedAt,
+                    totalPausedMs,
+                    feedbackStartedAtRef.current,
+                    Date.now()
+                ),
                 (ADVENTURE_CONSTANTS.totalTimeSec * 1000)
             ),
             totalAttack,
@@ -284,26 +301,32 @@ export function AdventurePage () {
         setAdventureProgress,
         sessionStartedAt,
         totalAttack,
+        totalPausedMs,
         setLatestAdventureResult,
         navigate,
     ]);
 
-    function startAdventure (): void {
+    function startAdventure (overrideDungeonId?: string): void {
         if (nextTimeoutRef.current != null) {
             window.clearTimeout(nextTimeoutRef.current);
             nextTimeoutRef.current = null;
         }
 
+        const targetDungeonId = overrideDungeonId ?? selectedDungeonId;
+
+        setSelectedDungeonId(targetDungeonId);
         setQuestionPool(buildAdventureQuestionPool(quizSettings));
         setQuestionIndex(0);
         setInputValue('');
         setBattleLog([]);
-        setEnemies(buildAdventureEnemySequence(adventureTheme, selectedDungeonId));
+        setEnemies(buildAdventureEnemySequence(adventureTheme, targetDungeonId));
         setCurrentEnemyIndex(0);
         setDefeatedEnemySlots([]);
         setSecretAppeared(false);
         setSessionStartedAt(null);
         setQuestionStartedAt(null);
+        setTotalPausedMs(0);
+        feedbackStartedAtRef.current = null;
         setNowTick(Date.now());
         setActiveInputMode(resolveInitialInteractiveInputMode(quizSettings.inputMethod));
         clearFeedbackState();
@@ -332,11 +355,21 @@ export function AdventurePage () {
             setQuestionPool(resolvedPool);
         }
 
+        const now = Date.now();
+
+        if (feedbackStartedAtRef.current != null) {
+            setTotalPausedMs((prev) => {
+                return (prev + Math.max(0, (now - feedbackStartedAtRef.current!)));
+            });
+            feedbackStartedAtRef.current = null;
+        }
+
         setQuestionIndex(nextQuestionIndex);
         setInputValue('');
         setPhase('active');
         clearFeedbackState();
-        setQuestionStartedAt(Date.now());
+        setQuestionStartedAt(now);
+        setNowTick(now);
     }
 
     function handleStartAnotherRun (): void {
@@ -367,6 +400,11 @@ export function AdventurePage () {
 
     function handleSubmit (event: React.FormEvent<HTMLFormElement>): void {
         event.preventDefault();
+
+        if (canSubmitCurrentAnswer === false) {
+            return;
+        }
+
         settleCurrentQuestion('submit');
     }
 
@@ -475,6 +513,7 @@ export function AdventurePage () {
         setBattleLog(nextBattleLog);
         setInputValue('');
         setPhase('feedback');
+        feedbackStartedAtRef.current = now;
         setNowTick(now);
 
         const feedbackEquation = buildFeedbackEquation(
@@ -540,7 +579,7 @@ export function AdventurePage () {
 
         event.preventDefault();
 
-        if (phase === 'active') {
+        if ((phase === 'active') && (canSubmitCurrentAnswer === true)) {
             settleCurrentQuestion('submit');
         }
     }
@@ -599,11 +638,26 @@ export function AdventurePage () {
     }
 
     function handleTileSubmit (): void {
-        if (phase !== 'active') {
+        if ((phase !== 'active') || (canSubmitCurrentAnswer === false)) {
             return;
         }
 
         settleCurrentQuestion('submit');
+    }
+
+    function handleDungeonSelect (dungeonId: string): void {
+        if (phase !== 'select') {
+            return;
+        }
+
+        setSelectedDungeonId(dungeonId);
+
+        const dungeon = getAdventureDungeonById(adventureTheme, dungeonId);
+        const confirmed = window.confirm(`${dungeon.name} に挑戦しますか？`);
+
+        if (confirmed === true) {
+            startAdventure(dungeonId);
+        }
     }
 
     return (
@@ -638,98 +692,94 @@ export function AdventurePage () {
                 </div>
             </header>
 
-            <section className="card">
-                <h2>ダンジョン選択</h2>
+            {phase === 'select' && (
+                <section className="card">
+                    <h2>ダンジョン選択</h2>
 
-                <div className="dungeon-grid">
-                    {adventureTheme.dungeons.map((dungeon) => {
-                        const dungeonProgress = adventureProgress.dungeonProgressById[dungeon.id];
-                        const selected = (dungeon.id === selectedDungeonId);
-                        const recommendedAttack = getRecommendedAttackForDungeon(dungeon.id);
+                    <div className="dungeon-grid">
+                        {adventureTheme.dungeons.map((dungeon) => {
+                            const dungeonProgress = adventureProgress.dungeonProgressById[dungeon.id];
+                            const selected = (dungeon.id === selectedDungeonId);
+                            const recommendedAttack = getRecommendedAttackForDungeon(dungeon.id);
 
-                        return (
-                            <button
-                                key={dungeon.id}
-                                type="button"
-                                className={`dungeon-card-button ${selected === true ? 'is-selected' : ''}`}
-                                disabled={(phase === 'countdown') || (phase === 'active') || (phase === 'feedback')}
-                                onClick={() => {
-                                    setSelectedDungeonId(dungeon.id);
-                                }}
-                            >
-                                <div className="dungeon-card-title">{dungeon.name}</div>
-                                <div className="dungeon-card-sub">推奨攻撃力 {recommendedAttack}</div>
-                                <div className="dungeon-card-sub">素材 {dungeonProgress?.materialCount ?? 0} 個</div>
-                                <div className="dungeon-card-sub">武器 {dungeonProgress?.craftedWeaponMemberKeys.length ?? 0} / {adventureTheme.partyMembers.length}</div>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <div className="button-row top-gap">
-                    <button
-                        type="button"
-                        className="primary-button"
-                        onClick={() => {
-                            startAdventure();
-                        }}
-                        disabled={(phase === 'countdown') || (phase === 'active') || (phase === 'feedback')}
-                    >
-                        {selectedDungeon.name} に挑戦する
-                    </button>
-                </div>
-            </section>
-
-            <section className="card adventure-status-card">
-                <h2>挑戦情報</h2>
-
-                <div className="adventure-overview-grid">
-                    <div className="adventure-overview-item">
-                        <div className="adventure-overview-label">総攻撃力</div>
-                        <div className="adventure-overview-value">{totalAttack}</div>
+                            return (
+                                <button
+                                    key={dungeon.id}
+                                    type="button"
+                                    className={`dungeon-card-button ${selected === true ? 'is-selected' : ''}`}
+                                    disabled={(phase === 'countdown') || (phase === 'active') || (phase === 'feedback')}
+                                    onClick={() => {
+                                        handleDungeonSelect(dungeon.id);
+                                    }}
+                                >
+                                    <div className="dungeon-card-title">{dungeon.name}</div>
+                                    <div className="dungeon-card-sub">推奨攻撃力 {recommendedAttack}</div>
+                                    <div className="dungeon-card-sub">素材 {dungeonProgress?.materialCount ?? 0} 個</div>
+                                    <div className="dungeon-card-sub">武器 {dungeonProgress?.craftedWeaponMemberKeys.length ?? 0} / {adventureTheme.partyMembers.length}</div>
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    <div className="adventure-overview-item">
-                        <div className="adventure-overview-label">所持素材</div>
-                        <div className="adventure-overview-value">{selectedDungeonProgress.materialCount}</div>
+                    <p className="sub-text top-gap">
+                        ダンジョンカードを押すと、そのまま挑戦確認が表示されます。
+                    </p>
+                </section>
+            )}
+
+            {phase === 'select' && (
+                <section className="card adventure-status-card">
+                    <h2>挑戦情報</h2>
+
+                    <div className="adventure-overview-grid">
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">総攻撃力</div>
+                            <div className="adventure-overview-value">{totalAttack}</div>
+                        </div>
+
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">所持素材</div>
+                            <div className="adventure-overview-value">{selectedDungeonProgress.materialCount}</div>
+                        </div>
+
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">武器錬成</div>
+                            <div className="adventure-overview-value">{selectedDungeonProgress.craftedWeaponMemberKeys.length} / {adventureTheme.partyMembers.length}</div>
+                        </div>
+
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">秘匿条件</div>
+                            <div className="adventure-overview-value">{ADVENTURE_CONSTANTS.secretBossTimeLimitSec}秒以内にボス撃破</div>
+                        </div>
                     </div>
 
-                    <div className="adventure-overview-item">
-                        <div className="adventure-overview-label">武器錬成</div>
-                        <div className="adventure-overview-value">{selectedDungeonProgress.craftedWeaponMemberKeys.length} / {adventureTheme.partyMembers.length}</div>
+                    <div className="party-chip-row top-gap">
+                        {adventureTheme.partyMembers.map((member) => {
+                            const crafted = selectedDungeonProgress.craftedWeaponMemberKeys.includes(member.key);
+                            const weaponName = crafted === true
+                                ? selectedDungeon.weaponNames[member.key]
+                                : member.baseWeaponName;
+
+                            return (
+                                <div key={member.key} className={`party-chip ${crafted === true ? 'is-crafted' : ''}`}>
+                                    <div className="party-chip-title">{getPartyMemberLabel(adventureTheme, member.key)}</div>
+                                    <div className="party-chip-sub">{weaponName}</div>
+                                </div>
+                            );
+                        })}
                     </div>
-
-                    <div className="adventure-overview-item">
-                        <div className="adventure-overview-label">秘匿条件</div>
-                        <div className="adventure-overview-value">{ADVENTURE_CONSTANTS.secretBossTimeLimitSec}秒以内にボス撃破</div>
-                    </div>
-                </div>
-
-                <div className="party-chip-row top-gap">
-                    {adventureTheme.partyMembers.map((member) => {
-                        const crafted = selectedDungeonProgress.craftedWeaponMemberKeys.includes(member.key);
-                        const weaponName = crafted === true
-                            ? selectedDungeon.weaponNames[member.key]
-                            : member.baseWeaponName;
-
-                        return (
-                            <div key={member.key} className={`party-chip ${crafted === true ? 'is-crafted' : ''}`}>
-                                <div className="party-chip-title">{getPartyMemberLabel(adventureTheme, member.key)}</div>
-                                <div className="party-chip-sub">{weaponName}</div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </section>
+                </section>
+            )}
 
             {phase === 'countdown' && (
                 <section className="card">
                     <h2>カウントダウン</h2>
+                    <p className="sub-text">{selectedDungeon.name} に出発します。</p>
                     <div className="big-display">{countdownValue}</div>
                 </section>
             )}
 
-            {(phase === 'active') || (phase === 'feedback') ? (
+            {((phase === 'active') || (phase === 'feedback')) && (
                 <>
                     <section className="card">
                         <div className="status-row">
@@ -739,14 +789,14 @@ export function AdventurePage () {
                             </div>
 
                             <div className="timer-badge">
-                                残り: {Math.ceil(remainingMs / 100) / 10} 秒
+                                残り: {formatAdventureSeconds(remainingMs)} 秒
                             </div>
                         </div>
 
                         <div className="status-row adventure-status-line">
                             <div><strong>現在の敵:</strong> {currentEnemy?.name ?? '---'}</div>
-                            <div><strong>経過:</strong> {Math.ceil(sessionElapsedMs / 100) / 10} 秒</div>
-                            <div><strong>今回の問題時間:</strong> {Math.ceil(currentQuestionElapsedMs / 100) / 10} 秒</div>
+                            <div><strong>経過:</strong> {formatAdventureSeconds(sessionElapsedMs)} 秒</div>
+                            <div><strong>今回の問題時間:</strong> {formatAdventureSeconds(currentQuestionElapsedMs)} 秒</div>
                         </div>
 
                         {currentEnemy != null && (
@@ -839,8 +889,8 @@ export function AdventurePage () {
                                     lang="en"
                                     pattern={
                                         currentQuestion?.answerKind === 'quotientRemainder'
-                                            ? '[0-9\\- ]*'
-                                            : '[0-9\\-\\.]*'
+                                            ? '[0-9\- ]*'
+                                            : '[0-9\-\.]*'
                                     }
                                     onFocus={() => {
                                         setActiveInputMode('keyboard');
@@ -862,7 +912,7 @@ export function AdventurePage () {
                                 <button
                                     type="submit"
                                     className="primary-button"
-                                    disabled={phase !== 'active'}
+                                    disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)}
                                 >
                                     攻撃する
                                 </button>
@@ -892,11 +942,13 @@ export function AdventurePage () {
                             <button type="button" className="keypad-button keypad-button-wide" disabled={phase !== 'active'} onClick={() => { appendInputValue('0'); }}>0</button>
                             <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (decimalKeyEnabled === false)} onClick={() => { appendInputValue('.'); }}>.</button>
                             <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (spaceKeyEnabled === false)} onClick={() => { appendInputValue(' '); }}>空白</button>
-                            <button type="button" className="keypad-button keypad-button-primary" disabled={phase !== 'active'} onClick={() => { handleTileSubmit(); }}>攻撃</button>
+                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>攻撃</button>
                         </div>
                     </section>
                 </>
-            ) : (
+            )}
+
+            {phase === 'select' && (
                 <section className="card">
                     <h2>v1 で先に入れた内容</h2>
                     <ul className="simple-list">
@@ -971,6 +1023,29 @@ function isProbablyMobileInputEnvironment (): boolean {
     const hasTouch = ('ontouchstart' in window);
 
     return (coarsePointer || hasTouch);
+}
+
+function getEffectiveSessionElapsedMs (
+    sessionStartedAt: number | null,
+    totalPausedMs: number,
+    feedbackStartedAt: number | null,
+    now: number
+): number {
+    if (sessionStartedAt == null) {
+        return 0;
+    }
+
+    const currentFeedbackPausedMs = (
+        feedbackStartedAt == null
+            ? 0
+            : Math.max(0, (now - feedbackStartedAt))
+    );
+
+    return Math.max(0, (now - sessionStartedAt - totalPausedMs - currentFeedbackPausedMs));
+}
+
+function formatAdventureSeconds (ms: number): string {
+    return Math.max(0, (ms / 1000)).toFixed(1);
 }
 
 function buildFeedbackEquation (

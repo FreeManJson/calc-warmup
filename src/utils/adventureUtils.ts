@@ -18,9 +18,9 @@ export const ADVENTURE_CONSTANTS = {
     totalTimeSec: 60,
     secretBossTimeLimitSec: 30,
     feedbackDelayMs: {
-        correct: 320,
-        wrong: 520,
-        timeout: 520,
+        correct: 700,
+        wrong: 900,
+        timeout: 900,
     },
     questionPoolSize: 120,
     baseAttack: 10,
