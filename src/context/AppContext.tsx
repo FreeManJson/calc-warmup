@@ -49,6 +49,11 @@ interface DeleteUserResult {
     message?: string;
 }
 
+interface RenameUserResult {
+    ok: boolean;
+    message?: string;
+}
+
 interface AppContextType {
     users: UserProfile[];
     selectedUserId: string;
@@ -69,6 +74,7 @@ interface AppContextType {
     finishQuiz: (result: QuizResult) => void;
     addUser: (name: string) => AddUserResult;
     deleteUser: (userId: string) => DeleteUserResult;
+    renameUser: (userId: string, nextName: string) => RenameUserResult;
     clearRanking: () => void;
 }
 
@@ -507,6 +513,102 @@ export function AppProvider (
         };
     }, [users, selectedUserId]);
 
+    const renameUser = useCallback((userId: string, nextName: string): RenameUserResult => {
+        const trimmed = nextName.trim();
+
+        if (trimmed.length <= 0) {
+            return {
+                ok: false,
+                message: 'ユーザー名を入力してください。',
+            };
+        }
+
+        const targetUser = users.find((user) => {
+            return (user.id === userId);
+        });
+
+        if (targetUser == null) {
+            return {
+                ok: false,
+                message: '変更対象ユーザーが見つかりません。',
+            };
+        }
+
+        if (targetUser.name === trimmed) {
+            return {
+                ok: true,
+            };
+        }
+
+        const exists = users.some((user) => {
+            return (
+                (user.id !== userId) &&
+                (user.name.toLowerCase() === trimmed.toLowerCase())
+            );
+        });
+
+        if (exists === true) {
+            return {
+                ok: false,
+                message: '同名ユーザーが既に存在します。',
+            };
+        }
+
+        const previousName = targetUser.name;
+
+        setUsers((prevUsers) => {
+            return prevUsers.map((user) => {
+                if (user.id !== userId) {
+                    return user;
+                }
+
+                return {
+                    ...user,
+                    name: trimmed,
+                };
+            });
+        });
+
+        setRanking((prevRanking) => {
+            return prevRanking.map((entry) => {
+                if (entry.userName !== previousName) {
+                    return entry;
+                }
+
+                return {
+                    ...entry,
+                    userName: trimmed,
+                };
+            });
+        });
+
+        setLatestResult((prevResult) => {
+            if ((prevResult == null) || (prevResult.userName !== previousName)) {
+                return prevResult;
+            }
+
+            return {
+                ...prevResult,
+                userName: trimmed,
+            };
+        });
+
+        setLatestAdventureResultState((prevResult) => {
+            if ((prevResult == null) || (prevResult.userName !== previousName)) {
+                return prevResult;
+            }
+
+            return {
+                ...prevResult,
+                userName: trimmed,
+            };
+        });
+
+        return {
+            ok: true,
+        };
+    }, [users]);
+
     const clearRanking = useCallback(() => {
         setRanking([]);
         setLastRankingEntryId(null);
@@ -533,6 +635,7 @@ export function AppProvider (
             finishQuiz,
             addUser,
             deleteUser,
+            renameUser,
             clearRanking,
         };
     }, [
@@ -554,6 +657,7 @@ export function AppProvider (
         finishQuiz,
         addUser,
         deleteUser,
+        renameUser,
         clearRanking,
     ]);
 

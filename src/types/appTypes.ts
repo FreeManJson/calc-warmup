@@ -198,6 +198,7 @@ export interface AdventureBattleLogEntry {
     elapsedMs: number;
     isCorrect: boolean;
     isTimeout: boolean;
+    isCritical: boolean;
     damage: number;
     enemySlot: EnemySlotType;
     enemyName: string;
@@ -225,6 +226,7 @@ export interface AdventureResult {
     missCount: number;
     accuracyRate: number;
     totalDamage: number;
+    criticalCount: number;
     defeatedEnemySlots: EnemySlotType[];
     defeatedEnemyNames: string[];
     bossDefeated: boolean;

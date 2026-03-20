@@ -183,6 +183,23 @@ export function QuizPage () {
         };
     }, [phase, currentIndex, pausedAt, activeInputMode, activeAnswerField, usesRemainderInputs]);
 
+    useEffect(() => {
+        if ((phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: 'auto',
+            });
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, currentIndex, paused, activeInputMode]);
+
     const goToNextQuestionOrFinish = useCallback((nextAnswers: AnswerResult[]) => {
         if (currentQuiz == null) {
             return;
@@ -468,6 +485,11 @@ export function QuizPage () {
 
     function handleSubmit (event: FormEvent<HTMLFormElement>): void {
         event.preventDefault();
+
+        if (activeInputMode !== 'keyboard') {
+            return;
+        }
+
         handleSettleCurrentQuestion('submit');
     }
 
@@ -479,7 +501,7 @@ export function QuizPage () {
             return;
         }
 
-        if (event.key !== 'Enter') {
+        if ((event.key !== 'Enter') || (activeInputMode !== 'keyboard')) {
             return;
         }
 
@@ -511,30 +533,10 @@ export function QuizPage () {
         }
     }
 
-    function switchToKeyboardMode (): void {
-        if ((phase !== 'active') || (paused === true)) {
-            return;
-        }
-
-        setActiveInputMode('keyboard');
-
-        window.setTimeout(() => {
-            focusAnswerField(activeAnswerField, mainInputRef, remainderInputRef, usesRemainderInputs);
-        }, 0);
-    }
-
-    function switchToTileMode (): void {
-        setActiveInputMode('tile');
-        mainInputRef.current?.blur();
-        remainderInputRef.current?.blur();
-    }
-
     function appendInputValue (text: string): void {
-        if ((phase !== 'active') || (paused === true)) {
+        if ((phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue((prev) => {
@@ -549,11 +551,9 @@ export function QuizPage () {
     }
 
     function backspaceInputValue (): void {
-        if ((phase !== 'active') || (paused === true)) {
+        if ((phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue((prev) => {
@@ -568,11 +568,9 @@ export function QuizPage () {
     }
 
     function clearInputValue (): void {
-        if ((phase !== 'active') || (paused === true)) {
+        if ((phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue('');
@@ -583,7 +581,7 @@ export function QuizPage () {
     }
 
     function handleTileSubmit (): void {
-        if ((phase !== 'active') || (paused === true)) {
+        if ((phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')) {
             return;
         }
 
@@ -595,11 +593,9 @@ export function QuizPage () {
     }
 
     function handleRemainderToggle (): void {
-        if ((phase !== 'active') || (paused === true) || (usesRemainderInputs === false)) {
+        if ((phase !== 'active') || (paused === true) || (usesRemainderInputs === false) || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
         setActiveAnswerField((prev) => {
             return (prev === 'main' ? 'remainder' : 'main');
         });
@@ -693,34 +689,6 @@ export function QuizPage () {
                             )}
                         </div>
 
-                        <div className="mode-row">
-                            <div className="mode-badge">
-                                現在の入力方式: {activeInputMode === 'keyboard' ? 'キーボード' : '数字タイル'}
-                            </div>
-
-                            <div className="segmented-row">
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToKeyboardMode();
-                                    }}
-                                >
-                                    キーボード入力
-                                </button>
-
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToTileMode();
-                                    }}
-                                >
-                                    数字タイル入力
-                                </button>
-                            </div>
-                        </div>
-
                         <h2>問題</h2>
                         <div className="question-box">{currentQuestion.expression}</div>
 
@@ -739,6 +707,8 @@ export function QuizPage () {
                                             type="text"
                                             value={mainInputValue}
                                             disabled={(phase !== 'active') || (paused === true)}
+                                            readOnly={activeInputMode !== 'keyboard'}
+                                            tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                             placeholder="商を入力"
                                             inputMode="numeric"
                                             enterKeyHint={usesRemainderInputs === true ? 'next' : 'done'}
@@ -748,7 +718,11 @@ export function QuizPage () {
                                             lang="en"
                                             pattern="[0-9\-]*"
                                             onFocus={() => {
-                                                setActiveInputMode('keyboard');
+                                                if (activeInputMode !== 'keyboard') {
+                                                    mainInputRef.current?.blur();
+                                                    return;
+                                                }
+
                                                 setActiveAnswerField('main');
                                             }}
                                             onCompositionStart={() => {
@@ -774,6 +748,8 @@ export function QuizPage () {
                                             type="text"
                                             value={remainderInputValue}
                                             disabled={(phase !== 'active') || (paused === true)}
+                                            readOnly={activeInputMode !== 'keyboard'}
+                                            tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                             placeholder="0"
                                             inputMode="numeric"
                                             enterKeyHint="done"
@@ -783,7 +759,11 @@ export function QuizPage () {
                                             lang="en"
                                             pattern="[0-9]*"
                                             onFocus={() => {
-                                                setActiveInputMode('keyboard');
+                                                if (activeInputMode !== 'keyboard') {
+                                                    remainderInputRef.current?.blur();
+                                                    return;
+                                                }
+
                                                 setActiveAnswerField('remainder');
                                             }}
                                             onCompositionStart={() => {
@@ -810,6 +790,8 @@ export function QuizPage () {
                                         type="text"
                                         value={mainInputValue}
                                         disabled={(phase !== 'active') || (paused === true)}
+                                        readOnly={activeInputMode !== 'keyboard'}
+                                        tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                         placeholder="ここに答えを入力"
                                         inputMode={
                                             currentQuestion.course === 'div' &&
@@ -824,7 +806,11 @@ export function QuizPage () {
                                         lang="en"
                                         pattern="[0-9\-\.]*"
                                         onFocus={() => {
-                                            setActiveInputMode('keyboard');
+                                            if (activeInputMode !== 'keyboard') {
+                                                mainInputRef.current?.blur();
+                                                return;
+                                            }
+
                                             setActiveAnswerField('main');
                                         }}
                                         onCompositionStart={() => {
@@ -843,15 +829,17 @@ export function QuizPage () {
                                 </label>
                             )}
 
-                            <div className="button-row top-gap">
-                                <button
-                                    type="submit"
-                                    className="primary-button"
-                                    disabled={(phase !== 'active') || (paused === true) || (canSubmitCurrentAnswer === false)}
-                                >
-                                    回答する
-                                </button>
-                            </div>
+                            {activeInputMode === 'keyboard' && (
+                                <div className="button-row top-gap">
+                                    <button
+                                        type="submit"
+                                        className="primary-button"
+                                        disabled={(phase !== 'active') || (paused === true) || (canSubmitCurrentAnswer === false)}
+                                    >
+                                        回答する
+                                    </button>
+                                </div>
+                            )}
                         </form>
                     </section>
 
@@ -859,25 +847,25 @@ export function QuizPage () {
                         <h2>数字タイル入力</h2>
 
                         <div className="keypad-grid">
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('7'); }}>7</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('8'); }}>8</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('9'); }}>9</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true)} onClick={() => { backspaceInputValue(); }}>←</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('7'); }}>7</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('8'); }}>8</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('9'); }}>9</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { backspaceInputValue(); }}>←</button>
 
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('4'); }}>4</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('5'); }}>5</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('6'); }}>6</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true)} onClick={() => { clearInputValue(); }}>C</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('4'); }}>4</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('5'); }}>5</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('6'); }}>6</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { clearInputValue(); }}>C</button>
 
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('1'); }}>1</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('2'); }}>2</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('3'); }}>3</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (minusKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('-'); }}>-</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('1'); }}>1</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('2'); }}>2</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('3'); }}>3</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile') || (minusKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('-'); }}>-</button>
 
-                            <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || (paused === true)} onClick={() => { appendInputValue('0'); }}>0</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (decimalKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('.'); }}>.</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true)} onClick={() => { handleRemainderToggle(); }}>{activeAnswerField === 'main' ? 'あまり' : '商へ'}</button>
-                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (paused === true) || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>回答</button>
+                            <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('0'); }}>0</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile') || (decimalKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('.'); }}>.</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile') || (usesRemainderInputs === false)} onClick={() => { handleRemainderToggle(); }}>{activeAnswerField === 'main' ? 'あまり' : '商へ'}</button>
+                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (paused === true) || (activeInputMode !== 'tile') || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>回答</button>
                         </div>
                     </section>
                 </>
@@ -916,30 +904,7 @@ export function QuizPage () {
 function resolveInitialInteractiveInputMode (
     inputMethod: InputMethodType
 ): ActiveInputModeType {
-    if (inputMethod === 'keyboard') {
-        return 'keyboard';
-    }
-
-    if (inputMethod === 'tile') {
-        return 'tile';
-    }
-
-    return (
-        isProbablyMobileInputEnvironment() === true
-            ? 'tile'
-            : 'keyboard'
-    );
-}
-
-function isProbablyMobileInputEnvironment (): boolean {
-    if (typeof window === 'undefined') {
-        return false;
-    }
-
-    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches === true;
-    const hasTouch = ('ontouchstart' in window);
-
-    return (coarsePointer || hasTouch);
+    return (inputMethod === 'keyboard' ? 'keyboard' : 'tile');
 }
 
 function focusAnswerField (

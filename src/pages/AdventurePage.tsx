@@ -256,6 +256,23 @@ export function AdventurePage () {
         };
     }, [phase, questionIndex, activeInputMode, activeAnswerField, usesRemainderInputs]);
 
+    useEffect(() => {
+        if ((phase !== 'active') || (activeInputMode !== 'tile')) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: 'auto',
+            });
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, questionIndex, activeInputMode]);
+
     const finishAdventure = useCallback((options?: {
         finalBattleLog?: AdventureBattleLogEntry[];
         finalDefeatedEnemySlots?: EnemySlotType[];
@@ -440,7 +457,7 @@ export function AdventurePage () {
     function handleSubmit (event: FormEvent<HTMLFormElement>): void {
         event.preventDefault();
 
-        if (canSubmitCurrentAnswer === false) {
+        if ((activeInputMode !== 'keyboard') || (canSubmitCurrentAnswer === false)) {
             return;
         }
 
@@ -476,7 +493,21 @@ export function AdventurePage () {
             (mode !== 'timeout') &&
             (compareResult.isCorrect === true)
         );
-        const damage = (isCorrect === true ? effectiveBattlePower : 0);
+        const isCritical = (
+            (isCorrect === true) &&
+            (currentQuestion.answerKind === 'quotientRemainder')
+        );
+        const damage = (
+            isCorrect === true
+                ? Math.round(
+                    effectiveBattlePower * (
+                        isCritical === true
+                            ? ADVENTURE_CONSTANTS.remainderCriticalRate
+                            : 1
+                    )
+                )
+                : 0
+        );
         const nextEnemies = enemies.map((enemy, index) => {
             if (index !== currentEnemyIndex) {
                 return enemy;
@@ -551,6 +582,7 @@ export function AdventurePage () {
                 elapsedMs: effectiveElapsedMs,
                 isCorrect,
                 isTimeout: (mode === 'timeout'),
+                isCritical,
                 damage,
                 enemySlot: currentEnemy.slot,
                 enemyName: currentEnemy.name,
@@ -578,9 +610,9 @@ export function AdventurePage () {
             setFeedbackSubText('今回は 0 ダメージ');
         } else if (isCorrect === true) {
             setFeedbackClassName('feedback-correct');
-            setFeedbackText('ヒット！');
+            setFeedbackText(isCritical === true ? 'クリティカル！' : 'ヒット！');
             setFeedbackKind('correct');
-            setFeedbackSymbol('⚔');
+            setFeedbackSymbol(isCritical === true ? '✦' : '⚔');
             setFeedbackSubText(`${currentEnemy.name} に ${damage} ダメージ`);
         } else {
             setFeedbackClassName('feedback-wrong');
@@ -625,7 +657,7 @@ export function AdventurePage () {
             return;
         }
 
-        if (event.key !== 'Enter') {
+        if ((event.key !== 'Enter') || (activeInputMode !== 'keyboard')) {
             return;
         }
 
@@ -645,34 +677,10 @@ export function AdventurePage () {
         }
     }
 
-    function switchToKeyboardMode (): void {
-        if (phase !== 'active') {
-            return;
-        }
-
-        setActiveInputMode('keyboard');
-
-        window.setTimeout(() => {
-            focusAnswerField(activeAnswerField, mainInputRef, remainderInputRef, usesRemainderInputs);
-        }, 0);
-    }
-
-    function switchToTileMode (): void {
-        if (phase !== 'active') {
-            return;
-        }
-
-        setActiveInputMode('tile');
-        mainInputRef.current?.blur();
-        remainderInputRef.current?.blur();
-    }
-
     function appendInputValue (text: string): void {
-        if (phase !== 'active') {
+        if ((phase !== 'active') || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue((prev) => {
@@ -687,11 +695,9 @@ export function AdventurePage () {
     }
 
     function backspaceInputValue (): void {
-        if (phase !== 'active') {
+        if ((phase !== 'active') || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue((prev) => {
@@ -706,11 +712,9 @@ export function AdventurePage () {
     }
 
     function clearInputValue (): void {
-        if (phase !== 'active') {
+        if ((phase !== 'active') || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
 
         if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
             setRemainderInputValue('');
@@ -721,7 +725,7 @@ export function AdventurePage () {
     }
 
     function handleTileSubmit (): void {
-        if ((phase !== 'active') || (canSubmitCurrentAnswer === false)) {
+        if ((phase !== 'active') || (activeInputMode !== 'tile') || (canSubmitCurrentAnswer === false)) {
             return;
         }
 
@@ -729,11 +733,9 @@ export function AdventurePage () {
     }
 
     function handleRemainderToggle (): void {
-        if ((phase !== 'active') || (usesRemainderInputs === false)) {
+        if ((phase !== 'active') || (usesRemainderInputs === false) || (activeInputMode !== 'tile')) {
             return;
         }
-
-        switchToTileMode();
         setActiveAnswerField((prev) => {
             return (prev === 'main' ? 'remainder' : 'main');
         });
@@ -932,34 +934,6 @@ export function AdventurePage () {
                     </section>
 
                     <section className="card">
-                        <div className="mode-row">
-                            <div className="mode-badge">
-                                現在の入力方式: {activeInputMode === 'keyboard' ? 'キーボード' : '数字タイル'}
-                            </div>
-
-                            <div className="segmented-row">
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToKeyboardMode();
-                                    }}
-                                >
-                                    キーボード入力
-                                </button>
-
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToTileMode();
-                                    }}
-                                >
-                                    数字タイル入力
-                                </button>
-                            </div>
-                        </div>
-
                         <h2>問題</h2>
                         <div className="question-box">{currentQuestion?.expression ?? '問題準備中...'}</div>
 
@@ -978,6 +952,8 @@ export function AdventurePage () {
                                             type="text"
                                             value={mainInputValue}
                                             disabled={phase !== 'active'}
+                                            readOnly={activeInputMode !== 'keyboard'}
+                                            tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                             placeholder="商を入力"
                                             inputMode="numeric"
                                             enterKeyHint="next"
@@ -987,7 +963,11 @@ export function AdventurePage () {
                                             lang="en"
                                             pattern="[0-9\-]*"
                                             onFocus={() => {
-                                                setActiveInputMode('keyboard');
+                                                if (activeInputMode !== 'keyboard') {
+                                                    mainInputRef.current?.blur();
+                                                    return;
+                                                }
+
                                                 setActiveAnswerField('main');
                                             }}
                                             onCompositionStart={() => {
@@ -1013,6 +993,8 @@ export function AdventurePage () {
                                             type="text"
                                             value={remainderInputValue}
                                             disabled={phase !== 'active'}
+                                            readOnly={activeInputMode !== 'keyboard'}
+                                            tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                             placeholder="0"
                                             inputMode="numeric"
                                             enterKeyHint="done"
@@ -1022,7 +1004,11 @@ export function AdventurePage () {
                                             lang="en"
                                             pattern="[0-9]*"
                                             onFocus={() => {
-                                                setActiveInputMode('keyboard');
+                                                if (activeInputMode !== 'keyboard') {
+                                                    remainderInputRef.current?.blur();
+                                                    return;
+                                                }
+
                                                 setActiveAnswerField('remainder');
                                             }}
                                             onCompositionStart={() => {
@@ -1049,6 +1035,8 @@ export function AdventurePage () {
                                         type="text"
                                         value={mainInputValue}
                                         disabled={phase !== 'active'}
+                                        readOnly={activeInputMode !== 'keyboard'}
+                                        tabIndex={activeInputMode === 'keyboard' ? 0 : -1}
                                         placeholder="ここに答えを入力"
                                         inputMode={
                                             currentQuestion?.course === 'div' &&
@@ -1063,7 +1051,11 @@ export function AdventurePage () {
                                         lang="en"
                                         pattern="[0-9\-\.]*"
                                         onFocus={() => {
-                                            setActiveInputMode('keyboard');
+                                            if (activeInputMode !== 'keyboard') {
+                                                mainInputRef.current?.blur();
+                                                return;
+                                            }
+
                                             setActiveAnswerField('main');
                                         }}
                                         onCompositionStart={() => {
@@ -1082,15 +1074,17 @@ export function AdventurePage () {
                                 </label>
                             )}
 
-                            <div className="button-row top-gap">
-                                <button
-                                    type="submit"
-                                    className="primary-button"
-                                    disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)}
-                                >
-                                    攻撃する
-                                </button>
-                            </div>
+                            {activeInputMode === 'keyboard' && (
+                                <div className="button-row top-gap">
+                                    <button
+                                        type="submit"
+                                        className="primary-button"
+                                        disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)}
+                                    >
+                                        攻撃する
+                                    </button>
+                                </div>
+                            )}
                         </form>
                     </section>
 
@@ -1098,25 +1092,25 @@ export function AdventurePage () {
                         <h2>数字タイル入力</h2>
 
                         <div className="keypad-grid">
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('7'); }}>7</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('8'); }}>8</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('9'); }}>9</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={phase !== 'active'} onClick={() => { backspaceInputValue(); }}>←</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('7'); }}>7</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('8'); }}>8</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('9'); }}>9</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { backspaceInputValue(); }}>←</button>
 
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('4'); }}>4</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('5'); }}>5</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('6'); }}>6</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={phase !== 'active'} onClick={() => { clearInputValue(); }}>C</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('4'); }}>4</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('5'); }}>5</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('6'); }}>6</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { clearInputValue(); }}>C</button>
 
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('1'); }}>1</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('2'); }}>2</button>
-                            <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('3'); }}>3</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (minusKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('-'); }}>-</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('1'); }}>1</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('2'); }}>2</button>
+                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('3'); }}>3</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (activeInputMode !== 'tile') || (minusKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('-'); }}>-</button>
 
-                            <button type="button" className="keypad-button keypad-button-wide" disabled={phase !== 'active'} onClick={() => { appendInputValue('0'); }}>0</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (decimalKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('.'); }}>.</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (usesRemainderInputs === false)} onClick={() => { handleRemainderToggle(); }}>{activeAnswerField === 'main' ? 'あまり' : '商へ'}</button>
-                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>攻撃</button>
+                            <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || (activeInputMode !== 'tile')} onClick={() => { appendInputValue('0'); }}>0</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (activeInputMode !== 'tile') || (decimalKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('.'); }}>.</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (activeInputMode !== 'tile') || (usesRemainderInputs === false)} onClick={() => { handleRemainderToggle(); }}>{activeAnswerField === 'main' ? 'あまり' : '商へ'}</button>
+                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (activeInputMode !== 'tile') || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>攻撃</button>
                         </div>
                     </section>
                 </>
@@ -1172,30 +1166,7 @@ function renderEnemyChip (
 function resolveInitialInteractiveInputMode (
     inputMethod: InputMethodType
 ): ActiveInputModeType {
-    if (inputMethod === 'keyboard') {
-        return 'keyboard';
-    }
-
-    if (inputMethod === 'tile') {
-        return 'tile';
-    }
-
-    return (
-        isProbablyMobileInputEnvironment() === true
-            ? 'tile'
-            : 'keyboard'
-    );
-}
-
-function isProbablyMobileInputEnvironment (): boolean {
-    if (typeof window === 'undefined') {
-        return false;
-    }
-
-    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches === true;
-    const hasTouch = ('ontouchstart' in window);
-
-    return (coarsePointer || hasTouch);
+    return (inputMethod === 'keyboard' ? 'keyboard' : 'tile');
 }
 
 function getEffectiveSessionElapsedMs (

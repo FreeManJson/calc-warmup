@@ -28,6 +28,7 @@ export const ADVENTURE_CONSTANTS = {
         wrong: 1200,
         timeout: 1200,
     },
+    remainderCriticalRate: 1.75,
     enemyHpCoefficients: {
         mobA: 2,
         mobB: 3,
@@ -480,6 +481,9 @@ export function buildAdventureResult (
     const totalDamage = input.battleLog.reduce((sum, entry) => {
         return (sum + entry.damage);
     }, 0);
+    const criticalCount = input.battleLog.filter((entry) => {
+        return (entry.isCritical === true);
+    }).length;
     const accuracyRate = (
         questionsAnswered > 0
             ? roundTo(((correctCount / questionsAnswered) * 100), 1)
@@ -507,6 +511,7 @@ export function buildAdventureResult (
         missCount,
         accuracyRate,
         totalDamage,
+        criticalCount,
         defeatedEnemySlots: input.defeatedEnemySlots,
         defeatedEnemyNames,
         bossDefeated,

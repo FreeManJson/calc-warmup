@@ -473,15 +473,15 @@ function generateDivisionQuestion (
     settings: QuizSettings,
     index: number
 ): GeneratedQuestion {
-    const divisorDigits = Math.min(getDigitsForTerm(1, settings), 3);
-    const quotientDigits = Math.min(getDigitsForTerm(0, settings), 3);
-
-    const divisor = Math.max(2, createIntegerOperand(divisorDigits));
+    const dividendDigits = Math.max(1, getDigitsForTerm(0, settings));
+    const divisorDigits = Math.max(1, getDigitsForTerm(1, settings));
 
     if (settings.allowRemainder === true) {
-        const quotient = createIntegerOperand(quotientDigits);
-        const remainder = randomInt(1, (divisor - 1));
-        const dividend = ((divisor * quotient) + remainder);
+        const operands = createDivisionOperandsWithRemainder(
+            dividendDigits,
+            divisorDigits
+        );
+        const { dividend, divisor, quotient, remainder } = operands;
 
         const difficultyInput: QuestionDifficultyInput = {
             course: 'div',
@@ -489,7 +489,7 @@ function generateDivisionQuestion (
             operatorsUsedCount: 1,
             hasMixedOperators: false,
             hasDecimalOperand: false,
-            hasNegativeOperand: (dividend < 0) || (divisor < 0),
+            hasNegativeOperand: false,
             resultIsNegative: false,
             maxDigits: Math.max(
                 getDisplayDigitCount(dividend),
@@ -509,13 +509,14 @@ function generateDivisionQuestion (
             answerKind: 'quotientRemainder',
             correctText: `商 ${quotient} / 余り ${remainder}`,
             expectedParts: [quotient, remainder],
-            inputHint: '商と余りを分けて入力してください（余り欄が空欄なら 0 扱い）',
+            inputHint: '商を入力し、余り欄が空欄なら 0 扱いです',
             difficultyInput,
         };
     }
 
     if (settings.allowRealDivision === true) {
-        const dividend = createIntegerOperand(Math.min(getDigitsForTerm(0, settings), 4));
+        const divisor = createIntegerOperandWithinDigits(divisorDigits, 2);
+        const dividend = createIntegerOperandWithinDigits(dividendDigits, 0);
         const rawAnswer = (dividend / divisor);
         const roundedAnswer = Number(rawAnswer.toFixed(REAL_DIVISION_DECIMAL_DIGITS));
 
@@ -525,7 +526,7 @@ function generateDivisionQuestion (
             operatorsUsedCount: 1,
             hasMixedOperators: false,
             hasDecimalOperand: false,
-            hasNegativeOperand: (dividend < 0) || (divisor < 0),
+            hasNegativeOperand: false,
             resultIsNegative: (roundedAnswer < 0),
             maxDigits: Math.max(
                 getDisplayDigitCount(dividend),
@@ -551,13 +552,18 @@ function generateDivisionQuestion (
         };
     }
 
-    let quotient = createIntegerOperand(quotientDigits);
+    const operands = createExactDivisionOperands(
+        dividendDigits,
+        divisorDigits
+    );
+    let quotient = operands.quotient;
+    let dividend = operands.dividend;
+    const divisor = operands.divisor;
 
     if ((settings.allowNegative === true) && (Math.random() < 0.35)) {
         quotient *= -1;
+        dividend *= -1;
     }
-
-    const dividend = (divisor * quotient);
 
     const difficultyInput: QuestionDifficultyInput = {
         course: 'div',
@@ -565,7 +571,7 @@ function generateDivisionQuestion (
         operatorsUsedCount: 1,
         hasMixedOperators: false,
         hasDecimalOperand: false,
-        hasNegativeOperand: (dividend < 0) || (divisor < 0),
+        hasNegativeOperand: (dividend < 0),
         resultIsNegative: (quotient < 0),
         maxDigits: Math.max(
             getDisplayDigitCount(dividend),
@@ -620,6 +626,117 @@ function createOperand (
 
 function createIntegerOperand (digits: number): number {
     return Math.round(createOperand(digits, false));
+}
+
+function createIntegerOperandWithinDigits (digits: number, minAllowedValue: number = 0): number {
+    const safeDigits = Math.max(1, digits);
+    const minValue = Math.max(
+        minAllowedValue,
+        (safeDigits === 1 ? 0 : Math.pow(10, (safeDigits - 1)))
+    );
+    const maxValue = ((Math.pow(10, safeDigits)) - 1);
+
+    if (minValue > maxValue) {
+        return maxValue;
+    }
+
+    return randomInt(minValue, maxValue);
+}
+
+function createExactDivisionOperands (
+    dividendDigits: number,
+    divisorDigits: number
+): { dividend: number; divisor: number; quotient: number } {
+    const dividendRange = buildDigitRange(dividendDigits, 1);
+    const divisorRange = buildDigitRange(divisorDigits, 2);
+    const effectiveDivisorMax = Math.max(2, Math.min(divisorRange.max, dividendRange.max));
+    const effectiveDivisorMin = Math.min(divisorRange.min, effectiveDivisorMax);
+
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+        const divisor = randomInt(effectiveDivisorMin, effectiveDivisorMax);
+        const minQuotient = Math.max(1, Math.ceil(dividendRange.min / divisor));
+        const maxQuotient = Math.floor(dividendRange.max / divisor);
+
+        if (minQuotient > maxQuotient) {
+            continue;
+        }
+
+        const quotient = randomInt(minQuotient, maxQuotient);
+        const dividend = (divisor * quotient);
+
+        if (getDisplayDigitCount(dividend) === dividendDigits) {
+            return { dividend, divisor, quotient };
+        }
+    }
+
+    const fallbackDivisor = Math.max(2, effectiveDivisorMin);
+    const fallbackQuotient = Math.max(1, Math.floor(dividendRange.max / fallbackDivisor));
+
+    return {
+        divisor: fallbackDivisor,
+        quotient: fallbackQuotient,
+        dividend: (fallbackDivisor * fallbackQuotient),
+    };
+}
+
+function createDivisionOperandsWithRemainder (
+    dividendDigits: number,
+    divisorDigits: number
+): { dividend: number; divisor: number; quotient: number; remainder: number } {
+    const dividendRange = buildDigitRange(dividendDigits, 1);
+    const divisorRange = buildDigitRange(divisorDigits, 2);
+    const effectiveDivisorMax = Math.max(2, Math.min(divisorRange.max, dividendRange.max));
+    const effectiveDivisorMin = Math.min(divisorRange.min, effectiveDivisorMax);
+
+    for (let attempt = 0; attempt < 320; attempt += 1) {
+        const divisor = randomInt(effectiveDivisorMin, effectiveDivisorMax);
+        const maxQuotient = Math.floor((dividendRange.max - 1) / divisor);
+
+        if (maxQuotient < 1) {
+            continue;
+        }
+
+        const quotient = randomInt(1, maxQuotient);
+        const minRemainder = Math.max(1, (dividendRange.min - (divisor * quotient)));
+        const maxRemainder = Math.min((divisor - 1), (dividendRange.max - (divisor * quotient)));
+
+        if (minRemainder > maxRemainder) {
+            continue;
+        }
+
+        const remainder = randomInt(minRemainder, maxRemainder);
+        const dividend = ((divisor * quotient) + remainder);
+
+        if (getDisplayDigitCount(dividend) === dividendDigits) {
+            return { dividend, divisor, quotient, remainder };
+        }
+    }
+
+    const fallback = createExactDivisionOperands(dividendDigits, divisorDigits);
+    const safeRemainder = Math.min(Math.max(1, fallback.divisor - 1), Math.max(1, fallback.dividend - (fallback.divisor * Math.max(1, fallback.quotient - 1))));
+    const fallbackDividend = Math.max(
+        buildDigitRange(dividendDigits, 1).min,
+        Math.min(buildDigitRange(dividendDigits, 1).max, ((fallback.divisor * fallback.quotient) + safeRemainder))
+    );
+
+    return {
+        dividend: fallbackDividend,
+        divisor: fallback.divisor,
+        quotient: Math.floor(fallbackDividend / fallback.divisor),
+        remainder: (fallbackDividend % fallback.divisor),
+    };
+}
+
+function buildDigitRange (digits: number, minAllowedValue: number): { min: number; max: number } {
+    const safeDigits = Math.max(1, digits);
+    const rawMin = (safeDigits === 1 ? 0 : Math.pow(10, (safeDigits - 1)));
+    const min = Math.max(minAllowedValue, rawMin);
+    const max = ((Math.pow(10, safeDigits)) - 1);
+
+    return {
+        min: Math.min(min, max),
+        max,
+    };
 }
 
 function wrapIfNegative (value: number): string {

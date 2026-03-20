@@ -254,12 +254,12 @@ export function SettingsPage () {
                 <div className="segmented-row">
                     <button
                         type="button"
-                        className={`segmented-button ${quizSettings.inputMethod === 'auto' ? 'is-selected' : ''}`}
+                        className={`segmented-button ${quizSettings.inputMethod !== 'keyboard' ? 'is-selected' : ''}`}
                         onClick={() => {
-                            updateInputMethod('auto');
+                            updateInputMethod('tile');
                         }}
                     >
-                        自動
+                        数字タイル入力
                     </button>
 
                     <button
@@ -269,22 +269,12 @@ export function SettingsPage () {
                             updateInputMethod('keyboard');
                         }}
                     >
-                        キーボード優先
-                    </button>
-
-                    <button
-                        type="button"
-                        className={`segmented-button ${quizSettings.inputMethod === 'tile' ? 'is-selected' : ''}`}
-                        onClick={() => {
-                            updateInputMethod('tile');
-                        }}
-                    >
-                        数字タイル優先
+                        キーボード入力
                     </button>
                 </div>
 
                 <p className="sub-text">
-                    自動: PC はキーボード寄り、スマホは数字タイル寄りで開始します。
+                    通常は数字タイル入力で進めます。PCキーボードで打ちたいときだけキーボード入力に切り替えてください。
                 </p>
             </section>
 

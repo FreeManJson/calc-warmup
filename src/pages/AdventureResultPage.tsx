@@ -78,6 +78,7 @@ export function AdventureResultPage () {
                     <li>ミス数: {latestAdventureResult.missCount}</li>
                     <li>正答率: {latestAdventureResult.accuracyRate}%</li>
                     <li>総ダメージ: {latestAdventureResult.totalDamage}</li>
+                    <li>クリティカル数: {latestAdventureResult.criticalCount}</li>
                     <li>基本戦力: {latestAdventureResult.totalAttack}</li>
                     <li>今回の有効戦力: {latestAdventureResult.effectiveBattlePower}</li>
                     <li>挑戦後基本戦力: {latestAdventureResult.totalAttackAfterRun}</li>
@@ -134,7 +135,7 @@ export function AdventureResultPage () {
                                         <div className="result-item-title">
                                             <span className="result-item-no">#{index + 1}</span>
                                             <span className={`result-judge-badge ${entry.isCorrect === true ? 'judge-correct' : 'judge-wrong'}`}>
-                                                {entry.isCorrect === true ? 'ヒット' : 'ミス'}
+                                                {entry.isCorrect === true ? (entry.isCritical === true ? 'クリティカル' : 'ヒット') : 'ミス'}
                                             </span>
                                         </div>
 

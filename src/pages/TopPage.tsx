@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import type { CourseType, InputMethodType } from '../types/appTypes';
+import type { CourseType } from '../types/appTypes';
 import { getCourseLabelText } from '../utils/quizUtils';
 import {
     ADVENTURE_CONSTANTS,
@@ -19,6 +19,7 @@ export function TopPage () {
         startQuiz,
         addUser,
         deleteUser,
+        renameUser,
         adventureTheme,
         adventureProgress,
     } = useAppContext();
@@ -77,6 +78,28 @@ export function TopPage () {
 
         if (result.ok === false) {
             window.alert(result.message ?? 'ユーザー追加に失敗しました。');
+        }
+    }
+
+    function handleRenameUser (): void {
+        const currentUser = users.find((user) => {
+            return (user.id === selectedUserId);
+        });
+
+        if (currentUser == null) {
+            return;
+        }
+
+        const inputName = window.prompt('新しいユーザー名を入力してください。', currentUser.name);
+
+        if (inputName == null) {
+            return;
+        }
+
+        const result = renameUser(currentUser.id, inputName);
+
+        if (result.ok === false) {
+            window.alert(result.message ?? 'ユーザー名変更に失敗しました。');
         }
     }
 
@@ -170,6 +193,15 @@ export function TopPage () {
                         }}
                     >
                         ユーザー追加
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            handleRenameUser();
+                        }}
+                    >
+                        選択中ユーザー名変更
                     </button>
 
                     <button
@@ -278,7 +310,6 @@ export function TopPage () {
                             ? ` あり（${quizSettings.timeLimitSec}秒）`
                             : ' なし'}
                     </li>
-                    <li>入力方式: {getInputMethodLabel(quizSettings.inputMethod)}</li>
                 </ul>
 
                 <div className="button-row top-gap">
@@ -334,18 +365,4 @@ export function TopPage () {
             </section>
         </div>
     );
-}
-
-function getInputMethodLabel (inputMethod: InputMethodType): string {
-    switch (inputMethod) {
-        case 'keyboard':
-            return 'キーボード優先';
-
-        case 'tile':
-            return '数字タイル優先';
-
-        case 'auto':
-        default:
-            return '自動';
-    }
 }

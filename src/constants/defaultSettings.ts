@@ -29,14 +29,13 @@ export function createDefaultSettings (): QuizSettings {
         allowRealDivision: false,
         presetName: '高校基礎',
         handwritingMemoEnabled: false,
-        inputMethod: 'auto',
+        inputMethod: 'tile',
     };
 }
 
 export function createDefaultUsers (): UserProfile[] {
     return [
-        { id: 'father', name: 'お父さん' },
-        { id: 'son', name: '息子' },
+        { id: 'hero', name: '名も無き勇者' },
     ];
 }
 
