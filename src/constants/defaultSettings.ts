@@ -1,5 +1,13 @@
 import { MAX_TERMS } from './appConstants';
-import type { QuizSettings, UserProfile } from '../types/appTypes';
+import type {
+    AdventureTheme,
+    QuizSettings,
+    UserAdventureProgress,
+    UserProfile,
+} from '../types/appTypes';
+import {
+    createDefaultAdventureProgress,
+} from '../utils/adventureUtils';
 
 export function createFilledTermDigits (fillValue: number = 2): number[] {
     return Array.from({ length: MAX_TERMS }, () => {
@@ -30,4 +38,10 @@ export function createDefaultUsers (): UserProfile[] {
         { id: 'father', name: 'お父さん' },
         { id: 'son', name: '息子' },
     ];
+}
+
+export function createDefaultAdventureProgressForTheme (
+    theme: AdventureTheme
+): UserAdventureProgress {
+    return createDefaultAdventureProgress(theme);
 }

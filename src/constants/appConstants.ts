@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
     users: 'calcWarmup.users',
     selectedUserId: 'calcWarmup.selectedUserId',
     settingsByUserId: 'calcWarmup.settingsByUserId',
+    adventureProgressByUserId: 'calcWarmup.adventureProgressByUserId.v1',
     ranking: 'calcWarmup.ranking.v2',
     latestResult: 'calcWarmup.latestResult.v2',
+    latestAdventureResult: 'calcWarmup.latestAdventureResult.v1',
 } as const;

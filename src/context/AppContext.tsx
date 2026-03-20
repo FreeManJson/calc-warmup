@@ -12,16 +12,21 @@ import {
     TOP_RANKING_COUNT,
 } from '../constants/appConstants';
 import {
+    createDefaultAdventureProgressForTheme,
     createDefaultSettings,
     createDefaultUsers,
 } from '../constants/defaultSettings';
+import { DEFAULT_ADVENTURE_THEME } from '../themes/defaultAdventureTheme';
 import type {
+    AdventureResult,
+    AdventureTheme,
     CourseType,
     CurrentQuiz,
     InputMethodType,
     QuizResult,
     QuizSettings,
     RankingEntry,
+    UserAdventureProgress,
     UserProfile,
 } from '../types/appTypes';
 import {
@@ -30,6 +35,9 @@ import {
 import {
     createRankingEntryFromResult,
 } from '../utils/scoreUtils';
+import {
+    normalizeAdventureProgress,
+} from '../utils/adventureUtils';
 
 interface AddUserResult {
     ok: boolean;
@@ -51,6 +59,11 @@ interface AppContextType {
     latestResult: QuizResult | null;
     ranking: RankingEntry[];
     lastRankingEntryId: string | null;
+    adventureTheme: AdventureTheme;
+    adventureProgress: UserAdventureProgress;
+    setAdventureProgress: (nextValue: SetStateAction<UserAdventureProgress>) => void;
+    latestAdventureResult: AdventureResult | null;
+    setLatestAdventureResult: (nextValue: AdventureResult | null) => void;
     startQuiz: (overrideSettings?: QuizSettings) => boolean;
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
@@ -62,6 +75,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 const DEFAULT_USERS = createDefaultUsers();
+const ADVENTURE_THEME = DEFAULT_ADVENTURE_THEME;
 
 export function AppProvider (
     { children }: { children: React.ReactNode }
@@ -116,12 +130,40 @@ export function AppProvider (
         };
     });
 
+    const [adventureProgressByUserId, setAdventureProgressByUserId] = useState<Record<string, UserAdventureProgress>>(() => {
+        const baseUsers = (
+            readJson<UserProfile[] | null>(STORAGE_KEYS.users, null) ?? DEFAULT_USERS
+        );
+        const initialMap = buildInitialAdventureProgressMap(baseUsers, ADVENTURE_THEME);
+        const storedMap = readJson<Record<string, unknown> | null>(
+            STORAGE_KEYS.adventureProgressByUserId,
+            null
+        );
+
+        const normalizedStoredMap: Record<string, UserAdventureProgress> = {};
+
+        if (storedMap != null) {
+            Object.keys(storedMap).forEach((userId) => {
+                normalizedStoredMap[userId] = normalizeAdventureProgress(storedMap[userId], ADVENTURE_THEME);
+            });
+        }
+
+        return {
+            ...initialMap,
+            ...normalizedStoredMap,
+        };
+    });
+
     const [ranking, setRanking] = useState<RankingEntry[]>(() => {
         return readJson<RankingEntry[]>(STORAGE_KEYS.ranking, []);
     });
 
     const [latestResult, setLatestResult] = useState<QuizResult | null>(() => {
         return readJson<QuizResult | null>(STORAGE_KEYS.latestResult, null);
+    });
+
+    const [latestAdventureResult, setLatestAdventureResultState] = useState<AdventureResult | null>(() => {
+        return readJson<AdventureResult | null>(STORAGE_KEYS.latestAdventureResult, null);
     });
 
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
@@ -167,6 +209,30 @@ export function AppProvider (
     }, [users]);
 
     useEffect(() => {
+        setAdventureProgressByUserId((prevMap) => {
+            const nextMap = { ...prevMap };
+
+            users.forEach((user) => {
+                if (nextMap[user.id] == null) {
+                    nextMap[user.id] = createDefaultAdventureProgressForTheme(ADVENTURE_THEME);
+                }
+            });
+
+            Object.keys(nextMap).forEach((userId) => {
+                const exists = users.some((user) => {
+                    return (user.id === userId);
+                });
+
+                if (exists === false) {
+                    delete nextMap[userId];
+                }
+            });
+
+            return nextMap;
+        });
+    }, [users]);
+
+    useEffect(() => {
         writeJson(STORAGE_KEYS.users, users);
     }, [users]);
 
@@ -179,6 +245,10 @@ export function AppProvider (
     }, [settingsByUserId]);
 
     useEffect(() => {
+        writeJson(STORAGE_KEYS.adventureProgressByUserId, adventureProgressByUserId);
+    }, [adventureProgressByUserId]);
+
+    useEffect(() => {
         writeJson(STORAGE_KEYS.ranking, ranking);
     }, [ranking]);
 
@@ -186,8 +256,16 @@ export function AppProvider (
         writeJson(STORAGE_KEYS.latestResult, latestResult);
     }, [latestResult]);
 
+    useEffect(() => {
+        writeJson(STORAGE_KEYS.latestAdventureResult, latestAdventureResult);
+    }, [latestAdventureResult]);
+
     const quizSettings = (
         settingsByUserId[selectedUserId] ?? createDefaultSettings()
+    );
+
+    const adventureProgress = (
+        adventureProgressByUserId[selectedUserId] ?? createDefaultAdventureProgressForTheme(ADVENTURE_THEME)
     );
 
     const setSelectedUserId = useCallback((userId: string) => {
@@ -214,6 +292,31 @@ export function AppProvider (
             };
         });
     }, [selectedUserId]);
+
+    const setAdventureProgress = useCallback((nextValue: SetStateAction<UserAdventureProgress>) => {
+        setAdventureProgressByUserId((prevMap) => {
+            const currentProgress = (
+                prevMap[selectedUserId] ?? createDefaultAdventureProgressForTheme(ADVENTURE_THEME)
+            );
+
+            const resolvedValue = (
+                typeof nextValue === 'function'
+                    ? nextValue(currentProgress)
+                    : nextValue
+            );
+
+            const normalizedValue = normalizeAdventureProgress(resolvedValue, ADVENTURE_THEME);
+
+            return {
+                ...prevMap,
+                [selectedUserId]: normalizedValue,
+            };
+        });
+    }, [selectedUserId]);
+
+    const setLatestAdventureResult = useCallback((nextValue: AdventureResult | null) => {
+        setLatestAdventureResultState(nextValue);
+    }, []);
 
     const startQuiz = useCallback((overrideSettings?: QuizSettings) => {
         const snapshot = normalizeQuizSettings(overrideSettings ?? quizSettings);
@@ -338,6 +441,13 @@ export function AppProvider (
             };
         });
 
+        setAdventureProgressByUserId((prevMap) => {
+            return {
+                ...prevMap,
+                [newUser.id]: createDefaultAdventureProgressForTheme(ADVENTURE_THEME),
+            };
+        });
+
         setSelectedUserIdState(newUser.id);
 
         return {
@@ -376,6 +486,12 @@ export function AppProvider (
             return nextMap;
         });
 
+        setAdventureProgressByUserId((prevMap) => {
+            const nextMap = { ...prevMap };
+            delete nextMap[userId];
+            return nextMap;
+        });
+
         setRanking((prevRanking) => {
             return prevRanking.filter((entry) => {
                 return (entry.userName !== targetUser.name);
@@ -407,6 +523,11 @@ export function AppProvider (
             latestResult,
             ranking,
             lastRankingEntryId,
+            adventureTheme: ADVENTURE_THEME,
+            adventureProgress,
+            setAdventureProgress,
+            latestAdventureResult,
+            setLatestAdventureResult,
             startQuiz,
             clearQuiz,
             finishQuiz,
@@ -424,6 +545,10 @@ export function AppProvider (
         latestResult,
         ranking,
         lastRankingEntryId,
+        adventureProgress,
+        setAdventureProgress,
+        latestAdventureResult,
+        setLatestAdventureResult,
         startQuiz,
         clearQuiz,
         finishQuiz,
@@ -454,6 +579,19 @@ function buildInitialSettingsMap (users: UserProfile[]): Record<string, QuizSett
 
     users.forEach((user) => {
         initialMap[user.id] = createDefaultSettings();
+    });
+
+    return initialMap;
+}
+
+function buildInitialAdventureProgressMap (
+    users: UserProfile[],
+    theme: AdventureTheme
+): Record<string, UserAdventureProgress> {
+    const initialMap: Record<string, UserAdventureProgress> = {};
+
+    users.forEach((user) => {
+        initialMap[user.id] = createDefaultAdventureProgressForTheme(theme);
     });
 
     return initialMap;

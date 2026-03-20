@@ -1,7 +1,12 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import type { CourseType, InputMethodType } from '../types/appTypes';
 import { getCourseLabelText } from '../utils/quizUtils';
+import {
+    ADVENTURE_CONSTANTS,
+    buildAdventureOverview,
+} from '../utils/adventureUtils';
 
 export function TopPage () {
     const navigate = useNavigate();
@@ -14,7 +19,13 @@ export function TopPage () {
         startQuiz,
         addUser,
         deleteUser,
+        adventureTheme,
+        adventureProgress,
     } = useAppContext();
+
+    const adventureOverview = useMemo(() => {
+        return buildAdventureOverview(adventureProgress, adventureTheme);
+    }, [adventureProgress, adventureTheme]);
 
     function toggleCourse (course: CourseType): void {
         setQuizSettings((prev) => {
@@ -40,7 +51,7 @@ export function TopPage () {
         });
     }
 
-    function handleStart (): void {
+    function handleStartNormal (): void {
         const started = startQuiz();
 
         if (started === false) {
@@ -49,6 +60,10 @@ export function TopPage () {
         }
 
         navigate('/quiz');
+    }
+
+    function handleStartAdventure (): void {
+        navigate('/adventure');
     }
 
     function handleAddUser (): void {
@@ -95,6 +110,39 @@ export function TopPage () {
         <div className="page-container">
             <h1>計算ウォーミングアップ</h1>
 
+            <section className="card hero-card">
+                <div className="hero-card-row">
+                    <div>
+                        <div className="hero-title">今日のモードを選ぶ</div>
+                        <div className="hero-subtitle">
+                            通常モードは n問完結、冒険モードは {ADVENTURE_CONSTANTS.totalTimeSec}秒 のタイムアタックです。
+                        </div>
+                    </div>
+
+                    <div className="hero-button-group">
+                        <button
+                            type="button"
+                            className="primary-hero-button"
+                            onClick={() => {
+                                handleStartNormal();
+                            }}
+                        >
+                            {adventureTheme.normalModeLabel}を開始
+                        </button>
+
+                        <button
+                            type="button"
+                            className="secondary-hero-button"
+                            onClick={() => {
+                                handleStartAdventure();
+                            }}
+                        >
+                            {adventureTheme.adventureModeLabel}へ
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <section className="card">
                 <h2>ユーザー選択</h2>
 
@@ -136,7 +184,7 @@ export function TopPage () {
                 </div>
 
                 <p className="sub-text">
-                    ユーザーごとに前回設定を保持します。
+                    ユーザーごとに通常モード設定と冒険モード進行状況を保持します。
                 </p>
             </section>
 
@@ -232,21 +280,8 @@ export function TopPage () {
                     </li>
                     <li>入力方式: {getInputMethodLabel(quizSettings.inputMethod)}</li>
                 </ul>
-            </section>
 
-            <section className="card">
-                <h2>メニュー</h2>
-
-                <div className="button-row">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            handleStart();
-                        }}
-                    >
-                        開始
-                    </button>
-
+                <div className="button-row top-gap">
                     <button
                         type="button"
                         onClick={() => {
@@ -265,6 +300,37 @@ export function TopPage () {
                         ランキング
                     </button>
                 </div>
+            </section>
+
+            <section className="card adventure-summary-card">
+                <h2>{adventureTheme.adventureModeLabel} 進行状況</h2>
+
+                <div className="adventure-overview-grid">
+                    <div className="adventure-overview-item">
+                        <div className="adventure-overview-label">総攻撃力</div>
+                        <div className="adventure-overview-value">{adventureOverview.totalAttack}</div>
+                    </div>
+
+                    <div className="adventure-overview-item">
+                        <div className="adventure-overview-label">鍛えた武器</div>
+                        <div className="adventure-overview-value">{adventureOverview.totalCraftedWeapons}</div>
+                    </div>
+
+                    <div className="adventure-overview-item">
+                        <div className="adventure-overview-label">獲得した宝</div>
+                        <div className="adventure-overview-value">{adventureOverview.totalUnlockedTreasures}</div>
+                    </div>
+
+                    <div className="adventure-overview-item">
+                        <div className="adventure-overview-label">累計討伐数</div>
+                        <div className="adventure-overview-value">{adventureOverview.totalEnemyKills}</div>
+                    </div>
+                </div>
+
+                <p className="sub-text top-gap">
+                    v1 ではダンジョン挑戦、素材獲得、自動錬成、宝解放までを先に入れています。
+                    続行選択・専用コレクションUI・テーマ差し替え拡張は次段階で積み上げやすい構造にしています。
+                </p>
             </section>
         </div>
     );

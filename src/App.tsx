@@ -1,5 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { AdventurePage } from './pages/AdventurePage';
+import { AdventureResultPage } from './pages/AdventureResultPage';
 import { RankingPage } from './pages/RankingPage';
 import { QuizPage } from './pages/QuizPage';
 import { ResultPage } from './pages/ResultPage';
@@ -16,6 +18,8 @@ export default function App () {
                     <Route path="/quiz" element={<QuizPage />} />
                     <Route path="/result" element={<ResultPage />} />
                     <Route path="/ranking" element={<RankingPage />} />
+                    <Route path="/adventure" element={<AdventurePage />} />
+                    <Route path="/adventure-result" element={<AdventureResultPage />} />
                 </Routes>
             </div>
         </AppProvider>

@@ -725,3 +725,226 @@ button:disabled {
         align-items: flex-start;
     }
 }
+.hero-card {
+    border-width: 2px;
+    border-color: #cfe0ff;
+    background: linear-gradient(180deg, #fbfdff 0%, #eef5ff 100%);
+}
+
+.hero-card-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.hero-title {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.hero-subtitle {
+    font-size: 15px;
+    color: #445;
+}
+
+.hero-button-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.primary-hero-button,
+.secondary-hero-button {
+    min-width: 180px;
+    min-height: 52px;
+    font-weight: bold;
+}
+
+.primary-hero-button {
+    background-color: #eaf2ff;
+    border-color: #9db9ef;
+}
+
+.secondary-hero-button {
+    background-color: #fffaf0;
+    border-color: #efd7aa;
+}
+
+.adventure-summary-card {
+    border-color: #d6def0;
+    background: linear-gradient(180deg, #fcfdff 0%, #f7faff 100%);
+}
+
+.adventure-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.adventure-overview-item {
+    border: 1px solid #d9deea;
+    border-radius: 12px;
+    padding: 12px;
+    background-color: #ffffff;
+}
+
+.adventure-overview-label {
+    font-size: 13px;
+    color: #667;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.adventure-overview-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: #223;
+}
+
+.dungeon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.dungeon-card-button {
+    text-align: left;
+    min-height: 122px;
+    padding: 14px;
+    border-radius: 14px;
+    background-color: #ffffff;
+}
+
+.dungeon-card-button.is-selected {
+    border-color: #93b2ee;
+    background-color: #eef5ff;
+}
+
+.dungeon-card-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.dungeon-card-sub {
+    font-size: 13px;
+    color: #556;
+    margin-top: 3px;
+}
+
+.adventure-status-card {
+    border-color: #d9deea;
+}
+
+.party-chip-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.party-chip {
+    border: 1px solid #d9deea;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background-color: #ffffff;
+}
+
+.party-chip.is-crafted {
+    border-color: #b5d9bf;
+    background-color: #eefcf0;
+}
+
+.party-chip-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #223;
+}
+
+.party-chip-sub {
+    font-size: 13px;
+    color: #556;
+    margin-top: 4px;
+}
+
+.adventure-status-line {
+    align-items: center;
+}
+
+.enemy-hp-block {
+    margin-top: 10px;
+    margin-bottom: 12px;
+}
+
+.enemy-hp-label {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.enemy-hp-bar {
+    width: 100%;
+    height: 16px;
+    border-radius: 999px;
+    background-color: #e6ebf5;
+    overflow: hidden;
+}
+
+.enemy-hp-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e65d5d 0%, #f2a45d 100%);
+}
+
+.defeated-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.enemy-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background-color: #f5f7fb;
+    border: 1px solid #d9deea;
+    font-size: 13px;
+    font-weight: bold;
+    color: #334;
+}
+
+.enemy-chip.is-defeated {
+    background-color: #e8f7ea;
+    border-color: #b9e0c2;
+    color: #257a3d;
+}
+
+.enemy-chip.is-hidden {
+    background-color: #f3f3f7;
+    border-style: dashed;
+    color: #889;
+}
+
+@media (max-width: 640px) {
+    .hero-card-row {
+        align-items: flex-start;
+    }
+
+    .hero-title {
+        font-size: 24px;
+    }
+
+    .primary-hero-button,
+    .secondary-hero-button {
+        width: 100%;
+    }
+
+    .dungeon-grid {
+        grid-template-columns: 1fr;
+    }
+}

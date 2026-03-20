@@ -1,6 +1,9 @@
 export type CourseType = 'add' | 'sub' | 'mul' | 'div';
 export type AnswerKind = 'number' | 'quotientRemainder';
 export type InputMethodType = 'auto' | 'keyboard' | 'tile';
+export type PartyMemberKey = 'warriorMale' | 'swordswoman' | 'fighterFemale' | 'wizardMale';
+export type EnemySlotType = 'mobA' | 'mobB' | 'mobC' | 'boss' | 'secret';
+export type AdventureTrophyKey = 'firstEnemyKill' | 'firstBossKill' | 'firstNoMissBossClear' | 'firstSecretKill';
 
 export interface QuizSettings {
     selectedCourses: CourseType[];
@@ -131,4 +134,103 @@ export interface RankingEntry {
     accuracyRate: number;
     averageAnswerMs: number;
     playedAt: string;
+}
+
+export interface AdventurePartyMemberTheme {
+    key: PartyMemberKey;
+    className: string;
+    iconAsset: string;
+    baseWeaponName: string;
+}
+
+export interface AdventureDungeonTheme {
+    id: string;
+    order: number;
+    name: string;
+    materialName: string;
+    treasureName: string;
+    iconAsset: string;
+    backgroundAsset: string;
+    enemyNames: Record<EnemySlotType, string>;
+    weaponNames: Record<PartyMemberKey, string>;
+}
+
+export interface AdventureTheme {
+    id: string;
+    name: string;
+    normalModeLabel: string;
+    adventureModeLabel: string;
+    partyMembers: AdventurePartyMemberTheme[];
+    dungeons: AdventureDungeonTheme[];
+}
+
+export interface AdventureDungeonProgress {
+    materialCount: number;
+    craftedWeaponMemberKeys: PartyMemberKey[];
+    treasureUnlocked: boolean;
+    clearCount: number;
+    bossKillCount: number;
+    secretKillCount: number;
+}
+
+export interface UserAdventureProgress {
+    totalRuns: number;
+    totalEnemyKills: number;
+    totalBossKills: number;
+    totalSecretKills: number;
+    trophies: AdventureTrophyKey[];
+    dungeonProgressById: Record<string, AdventureDungeonProgress>;
+}
+
+export interface AdventureEnemyState {
+    slot: EnemySlotType;
+    name: string;
+    maxHp: number;
+    currentHp: number;
+    defeated: boolean;
+}
+
+export interface AdventureBattleLogEntry {
+    questionId: string;
+    questionText: string;
+    userAnswer: string;
+    correctAnswerText: string;
+    elapsedMs: number;
+    isCorrect: boolean;
+    isTimeout: boolean;
+    damage: number;
+    enemySlot: EnemySlotType;
+    enemyName: string;
+    enemyRemainingHp: number;
+    enemyDefeated: boolean;
+}
+
+export interface AdventureResult {
+    userName: string;
+    dungeonId: string;
+    dungeonName: string;
+    materialName: string;
+    treasureName: string;
+    totalTimeSec: number;
+    elapsedMs: number;
+    questionsAnswered: number;
+    correctCount: number;
+    missCount: number;
+    accuracyRate: number;
+    totalAttack: number;
+    totalAttackAfterRun: number;
+    totalDamage: number;
+    defeatedEnemySlots: EnemySlotType[];
+    defeatedEnemyNames: string[];
+    bossDefeated: boolean;
+    secretAppeared: boolean;
+    secretDefeated: boolean;
+    materialsEarned: number;
+    newlyCraftedWeaponNames: string[];
+    treasureUnlockedThisRun: boolean;
+    trophiesUnlocked: string[];
+    reachedStageLabel: string;
+    reachedEnemyName: string;
+    playedAt: string;
+    battleLog: AdventureBattleLogEntry[];
 }
