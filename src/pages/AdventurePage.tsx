@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent, RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import type {
     AdventureBattleLogEntry,
     AdventureEnemyState,
+    AnswerKind,
     EnemySlotType,
     GeneratedQuestion,
     InputMethodType,
@@ -14,18 +16,23 @@ import {
 import {
     ADVENTURE_CONSTANTS,
     applyAdventureRewards,
+    buildAdventureChallengeBadge,
     buildAdventureEnemySequence,
     buildAdventureQuestionPool,
     buildAdventureResult,
+    calculateEffectiveAdventureAttack,
+    calculateRecommendedBattlePower,
     calculateTotalAttack,
+    computeProblemLevel,
     getAdventureDungeonById,
+    getAdventureLevelBalance,
     getPartyMemberLabel,
-    getRecommendedAttackForDungeon,
 } from '../utils/adventureUtils';
 
 type AdventurePhase = 'select' | 'countdown' | 'active' | 'feedback';
 type ActiveInputModeType = 'keyboard' | 'tile';
 type FeedbackKindType = 'correct' | 'wrong' | 'timeout' | null;
+type AnswerFieldType = 'main' | 'remainder';
 
 export function AdventurePage () {
     const navigate = useNavigate();
@@ -46,7 +53,9 @@ export function AdventurePage () {
     const [countdownValue, setCountdownValue] = useState<number>(3);
     const [questionPool, setQuestionPool] = useState<GeneratedQuestion[]>([]);
     const [questionIndex, setQuestionIndex] = useState<number>(0);
-    const [inputValue, setInputValue] = useState<string>('');
+    const [mainInputValue, setMainInputValue] = useState<string>('');
+    const [remainderInputValue, setRemainderInputValue] = useState<string>('');
+    const [activeAnswerField, setActiveAnswerField] = useState<AnswerFieldType>('main');
     const [battleLog, setBattleLog] = useState<AdventureBattleLogEntry[]>([]);
     const [enemies, setEnemies] = useState<AdventureEnemyState[]>([]);
     const [currentEnemyIndex, setCurrentEnemyIndex] = useState<number>(0);
@@ -67,7 +76,8 @@ export function AdventurePage () {
     const [feedbackEquationLeft, setFeedbackEquationLeft] = useState<string>('');
     const [feedbackEquationAnswer, setFeedbackEquationAnswer] = useState<string>('');
 
-    const answerInputRef = useRef<HTMLInputElement | null>(null);
+    const mainInputRef = useRef<HTMLInputElement | null>(null);
+    const remainderInputRef = useRef<HTMLInputElement | null>(null);
     const nextTimeoutRef = useRef<number | null>(null);
     const isComposingRef = useRef<boolean>(false);
     const feedbackStartedAtRef = useRef<number | null>(null);
@@ -90,6 +100,26 @@ export function AdventurePage () {
     const totalAttack = useMemo(() => {
         return calculateTotalAttack(adventureProgress, adventureTheme);
     }, [adventureProgress, adventureTheme]);
+
+    const problemLevel = useMemo(() => {
+        return computeProblemLevel(quizSettings);
+    }, [quizSettings]);
+
+    const challengeBadge = useMemo(() => {
+        return buildAdventureChallengeBadge(quizSettings);
+    }, [quizSettings]);
+
+    const levelBalance = useMemo(() => {
+        return getAdventureLevelBalance(problemLevel);
+    }, [problemLevel]);
+
+    const effectiveBattlePower = useMemo(() => {
+        return calculateEffectiveAdventureAttack(totalAttack, problemLevel);
+    }, [totalAttack, problemLevel]);
+
+    const recommendedBattlePower = useMemo(() => {
+        return calculateRecommendedBattlePower(selectedDungeonId, problemLevel);
+    }, [selectedDungeonId, problemLevel]);
 
     const currentQuestion = useMemo(() => {
         return questionPool[questionIndex] ?? null;
@@ -117,28 +147,20 @@ export function AdventurePage () {
     }, [questionStartedAt, nowTick]);
 
     const remainingMs = Math.max(0, ((ADVENTURE_CONSTANTS.totalTimeSec * 1000) - sessionElapsedMs));
-
+    const usesRemainderInputs = (currentQuestion?.answerKind === 'quotientRemainder');
     const decimalKeyEnabled = (
-        (quizSettings.allowDecimal === true) ||
-        (quizSettings.allowRealDivision === true)
+        (usesRemainderInputs === false) &&
+        (
+            (quizSettings.allowDecimal === true) ||
+            (quizSettings.allowRealDivision === true)
+        )
     );
-
     const minusKeyEnabled = (
         (quizSettings.allowNegative === true) ||
         ((currentQuestion?.expectedNumber ?? 0) < 0)
     );
-
-    const spaceKeyEnabled = (
-        currentQuestion?.answerKind === 'quotientRemainder'
-    );
-
-    const questionCountText = (
-        battleLog.length > 0
-            ? `${battleLog.length + 1}問目`
-            : '1問目'
-    );
-
-    const canSubmitCurrentAnswer = (inputValue.trim().length > 0);
+    const questionCountText = `${battleLog.length + 1}問目`;
+    const canSubmitCurrentAnswer = hasSubmittableMainInput(mainInputValue);
 
     useEffect(() => {
         return () => {
@@ -161,6 +183,7 @@ export function AdventurePage () {
             setTotalPausedMs(0);
             feedbackStartedAtRef.current = null;
             setNowTick(now);
+            setActiveAnswerField('main');
             return;
         }
 
@@ -219,19 +242,19 @@ export function AdventurePage () {
         }
 
         if (activeInputMode !== 'keyboard') {
-            answerInputRef.current?.blur();
+            mainInputRef.current?.blur();
+            remainderInputRef.current?.blur();
             return;
         }
 
         const timerId = window.setTimeout(() => {
-            answerInputRef.current?.focus();
-            answerInputRef.current?.select();
+            focusAnswerField(activeAnswerField, mainInputRef, remainderInputRef, usesRemainderInputs);
         }, 0);
 
         return () => {
             window.clearTimeout(timerId);
         };
-    }, [phase, questionIndex, activeInputMode]);
+    }, [phase, questionIndex, activeInputMode, activeAnswerField, usesRemainderInputs]);
 
     const finishAdventure = useCallback((options?: {
         finalBattleLog?: AdventureBattleLogEntry[];
@@ -276,7 +299,12 @@ export function AdventurePage () {
                 ),
                 (ADVENTURE_CONSTANTS.totalTimeSec * 1000)
             ),
+            problemLevel,
+            challengeBadgeLabel: challengeBadge.label,
+            partyAttackRate: levelBalance.partyAttackRate,
+            enemyHpRate: levelBalance.enemyHpRate,
             totalAttack,
+            effectiveBattlePower,
             totalAttackAfterRun: rewardResolution.totalAttackAfterRun,
             battleLog: finalBattleLog,
             defeatedEnemySlots: finalDefeatedEnemySlots,
@@ -290,21 +318,32 @@ export function AdventurePage () {
         setLatestAdventureResult(result);
         navigate('/adventure-result');
     }, [
-        battleLog,
-        defeatedEnemySlots,
-        secretAppeared,
-        users,
-        selectedUserId,
         adventureProgress,
         adventureTheme,
+        battleLog,
+        challengeBadge.label,
+        defeatedEnemySlots,
+        effectiveBattlePower,
+        levelBalance.enemyHpRate,
+        levelBalance.partyAttackRate,
+        navigate,
+        problemLevel,
+        secretAppeared,
         selectedDungeonId,
-        setAdventureProgress,
+        selectedUserId,
         sessionStartedAt,
+        setAdventureProgress,
         totalAttack,
         totalPausedMs,
         setLatestAdventureResult,
-        navigate,
+        users,
     ]);
+
+    function resetAnswerInputs (): void {
+        setMainInputValue('');
+        setRemainderInputValue('');
+        setActiveAnswerField('main');
+    }
 
     function startAdventure (overrideDungeonId?: string): void {
         if (nextTimeoutRef.current != null) {
@@ -317,9 +356,9 @@ export function AdventurePage () {
         setSelectedDungeonId(targetDungeonId);
         setQuestionPool(buildAdventureQuestionPool(quizSettings));
         setQuestionIndex(0);
-        setInputValue('');
+        resetAnswerInputs();
         setBattleLog([]);
-        setEnemies(buildAdventureEnemySequence(adventureTheme, targetDungeonId));
+        setEnemies(buildAdventureEnemySequence(adventureTheme, targetDungeonId, problemLevel));
         setCurrentEnemyIndex(0);
         setDefeatedEnemySlots([]);
         setSecretAppeared(false);
@@ -365,7 +404,7 @@ export function AdventurePage () {
         }
 
         setQuestionIndex(nextQuestionIndex);
-        setInputValue('');
+        resetAnswerInputs();
         setPhase('active');
         clearFeedbackState();
         setQuestionStartedAt(now);
@@ -398,7 +437,7 @@ export function AdventurePage () {
         navigate('/');
     }
 
-    function handleSubmit (event: React.FormEvent<HTMLFormElement>): void {
+    function handleSubmit (event: FormEvent<HTMLFormElement>): void {
         event.preventDefault();
 
         if (canSubmitCurrentAnswer === false) {
@@ -412,7 +451,7 @@ export function AdventurePage () {
         if (
             (currentQuestion == null) ||
             (currentEnemy == null) ||
-            ((phase !== 'active') && (phase !== 'feedback'))
+            (phase !== 'active')
         ) {
             return;
         }
@@ -423,16 +462,21 @@ export function AdventurePage () {
                 ? 0
                 : Math.max(0, (now - questionStartedAt))
         );
+        const submittedAnswerText = buildSubmittedAnswerText(
+            currentQuestion.answerKind,
+            mainInputValue,
+            remainderInputValue
+        );
         const compareResult = (
             mode === 'timeout'
                 ? { isCorrect: false, normalizedInput: '(時間切れ)' }
-                : compareAnswer(currentQuestion, inputValue)
+                : compareAnswer(currentQuestion, submittedAnswerText)
         );
         const isCorrect = (
             (mode !== 'timeout') &&
             (compareResult.isCorrect === true)
         );
-        const damage = (isCorrect === true ? totalAttack : 0);
+        const damage = (isCorrect === true ? effectiveBattlePower : 0);
         const nextEnemies = enemies.map((enemy, index) => {
             if (index !== currentEnemyIndex) {
                 return enemy;
@@ -463,9 +507,14 @@ export function AdventurePage () {
 
         if (enemyDefeated === true) {
             if (currentEnemy.slot === 'boss') {
+                const effectiveSessionElapsedMs = getEffectiveSessionElapsedMs(
+                    sessionStartedAt,
+                    totalPausedMs,
+                    feedbackStartedAtRef.current,
+                    now
+                );
                 const clearedWithinSecretLimit = (
-                    sessionStartedAt != null &&
-                    ((now - sessionStartedAt) <= (ADVENTURE_CONSTANTS.secretBossTimeLimitSec * 1000))
+                    effectiveSessionElapsedMs <= (ADVENTURE_CONSTANTS.secretBossTimeLimitSec * 1000)
                 );
 
                 if (clearedWithinSecretLimit === true) {
@@ -511,7 +560,7 @@ export function AdventurePage () {
         ];
 
         setBattleLog(nextBattleLog);
-        setInputValue('');
+        resetAnswerInputs();
         setPhase('feedback');
         feedbackStartedAtRef.current = now;
         setNowTick(now);
@@ -568,7 +617,10 @@ export function AdventurePage () {
         }, delayMs);
     }
 
-    function handleInputKeyDown (event: React.KeyboardEvent<HTMLInputElement>): void {
+    function handleInputKeyDown (
+        event: KeyboardEvent<HTMLInputElement>,
+        field: AnswerFieldType
+    ): void {
         if (isComposingRef.current === true) {
             return;
         }
@@ -580,6 +632,15 @@ export function AdventurePage () {
         event.preventDefault();
 
         if ((phase === 'active') && (canSubmitCurrentAnswer === true)) {
+            if ((usesRemainderInputs === true) && (field === 'main')) {
+                setActiveAnswerField('remainder');
+                window.setTimeout(() => {
+                    remainderInputRef.current?.focus();
+                    remainderInputRef.current?.select();
+                }, 0);
+                return;
+            }
+
             settleCurrentQuestion('submit');
         }
     }
@@ -592,8 +653,7 @@ export function AdventurePage () {
         setActiveInputMode('keyboard');
 
         window.setTimeout(() => {
-            answerInputRef.current?.focus();
-            answerInputRef.current?.select();
+            focusAnswerField(activeAnswerField, mainInputRef, remainderInputRef, usesRemainderInputs);
         }, 0);
     }
 
@@ -603,7 +663,8 @@ export function AdventurePage () {
         }
 
         setActiveInputMode('tile');
-        answerInputRef.current?.blur();
+        mainInputRef.current?.blur();
+        remainderInputRef.current?.blur();
     }
 
     function appendInputValue (text: string): void {
@@ -612,7 +673,15 @@ export function AdventurePage () {
         }
 
         switchToTileMode();
-        setInputValue((prev) => {
+
+        if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
+            setRemainderInputValue((prev) => {
+                return (prev + text);
+            });
+            return;
+        }
+
+        setMainInputValue((prev) => {
             return (prev + text);
         });
     }
@@ -623,7 +692,15 @@ export function AdventurePage () {
         }
 
         switchToTileMode();
-        setInputValue((prev) => {
+
+        if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
+            setRemainderInputValue((prev) => {
+                return prev.slice(0, -1);
+            });
+            return;
+        }
+
+        setMainInputValue((prev) => {
             return prev.slice(0, -1);
         });
     }
@@ -634,7 +711,13 @@ export function AdventurePage () {
         }
 
         switchToTileMode();
-        setInputValue('');
+
+        if ((activeAnswerField === 'remainder') && (usesRemainderInputs === true)) {
+            setRemainderInputValue('');
+            return;
+        }
+
+        setMainInputValue('');
     }
 
     function handleTileSubmit (): void {
@@ -643,6 +726,17 @@ export function AdventurePage () {
         }
 
         settleCurrentQuestion('submit');
+    }
+
+    function handleRemainderToggle (): void {
+        if ((phase !== 'active') || (usesRemainderInputs === false)) {
+            return;
+        }
+
+        switchToTileMode();
+        setActiveAnswerField((prev) => {
+            return (prev === 'main' ? 'remainder' : 'main');
+        });
     }
 
     function handleDungeonSelect (dungeonId: string): void {
@@ -666,7 +760,7 @@ export function AdventurePage () {
                 <div>
                     <h1>{adventureTheme.adventureModeLabel}</h1>
                     <p className="sub-text">
-                        通常モードの計算設定を土台にしつつ、{ADVENTURE_CONSTANTS.totalTimeSec}秒 でダンジョンを攻略します。
+                        学習設定を土台にしつつ、{ADVENTURE_CONSTANTS.totalTimeSec}秒 でダンジョンを攻略します。
                     </p>
                 </div>
 
@@ -700,20 +794,19 @@ export function AdventurePage () {
                         {adventureTheme.dungeons.map((dungeon) => {
                             const dungeonProgress = adventureProgress.dungeonProgressById[dungeon.id];
                             const selected = (dungeon.id === selectedDungeonId);
-                            const recommendedAttack = getRecommendedAttackForDungeon(dungeon.id);
+                            const dungeonRecommendedPower = calculateRecommendedBattlePower(dungeon.id, problemLevel);
 
                             return (
                                 <button
                                     key={dungeon.id}
                                     type="button"
                                     className={`dungeon-card-button ${selected === true ? 'is-selected' : ''}`}
-                                    disabled={(phase === 'countdown') || (phase === 'active') || (phase === 'feedback')}
                                     onClick={() => {
                                         handleDungeonSelect(dungeon.id);
                                     }}
                                 >
                                     <div className="dungeon-card-title">{dungeon.name}</div>
-                                    <div className="dungeon-card-sub">推奨攻撃力 {recommendedAttack}</div>
+                                    <div className="dungeon-card-sub">今回の推奨戦力 {dungeonRecommendedPower}</div>
                                     <div className="dungeon-card-sub">素材 {dungeonProgress?.materialCount ?? 0} 個</div>
                                     <div className="dungeon-card-sub">武器 {dungeonProgress?.craftedWeaponMemberKeys.length ?? 0} / {adventureTheme.partyMembers.length}</div>
                                 </button>
@@ -733,24 +826,30 @@ export function AdventurePage () {
 
                     <div className="adventure-overview-grid">
                         <div className="adventure-overview-item">
-                            <div className="adventure-overview-label">総攻撃力</div>
+                            <div className="adventure-overview-label">問題レベル</div>
+                            <div className="adventure-overview-value">Lv{problemLevel}</div>
+                        </div>
+
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">挑戦バッジ</div>
+                            <div className="adventure-overview-value adventure-badge-value">{challengeBadge.label}</div>
+                        </div>
+
+                        <div className="adventure-overview-item">
+                            <div className="adventure-overview-label">基本戦力</div>
                             <div className="adventure-overview-value">{totalAttack}</div>
                         </div>
 
                         <div className="adventure-overview-item">
-                            <div className="adventure-overview-label">所持素材</div>
-                            <div className="adventure-overview-value">{selectedDungeonProgress.materialCount}</div>
+                            <div className="adventure-overview-label">今回の有効戦力</div>
+                            <div className="adventure-overview-value">{effectiveBattlePower}</div>
                         </div>
+                    </div>
 
-                        <div className="adventure-overview-item">
-                            <div className="adventure-overview-label">武器錬成</div>
-                            <div className="adventure-overview-value">{selectedDungeonProgress.craftedWeaponMemberKeys.length} / {adventureTheme.partyMembers.length}</div>
-                        </div>
-
-                        <div className="adventure-overview-item">
-                            <div className="adventure-overview-label">秘匿条件</div>
-                            <div className="adventure-overview-value">{ADVENTURE_CONSTANTS.secretBossTimeLimitSec}秒以内にボス撃破</div>
-                        </div>
+                    <div className="adventure-balance-note top-gap">
+                        <div>問題レベルが上がるほど、難しい術式の共鳴で味方の一撃も強化されます。</div>
+                        <div>味方倍率 ×{levelBalance.partyAttackRate.toFixed(2)} / 敵HP倍率 ×{levelBalance.enemyHpRate.toFixed(2)}</div>
+                        <div>シークレット条件: {ADVENTURE_CONSTANTS.secretBossTimeLimitSec}秒以内にボス撃破</div>
                     </div>
 
                     <div className="party-chip-row top-gap">
@@ -785,7 +884,7 @@ export function AdventurePage () {
                         <div className="status-row">
                             <div>
                                 <strong>{selectedDungeon.name}</strong>
-                                <div className="sub-text">{questionCountText}</div>
+                                <div className="sub-text">{questionCountText} ・ 問題レベル Lv{problemLevel} ・ {challengeBadge.label}</div>
                             </div>
 
                             <div className="timer-badge">
@@ -797,6 +896,12 @@ export function AdventurePage () {
                             <div><strong>現在の敵:</strong> {currentEnemy?.name ?? '---'}</div>
                             <div><strong>経過:</strong> {formatAdventureSeconds(sessionElapsedMs)} 秒</div>
                             <div><strong>今回の問題時間:</strong> {formatAdventureSeconds(currentQuestionElapsedMs)} 秒</div>
+                        </div>
+
+                        <div className="status-row adventure-status-line">
+                            <div><strong>基本戦力:</strong> {totalAttack}</div>
+                            <div><strong>今回の有効戦力:</strong> {effectiveBattlePower}</div>
+                            <div><strong>推奨戦力:</strong> {recommendedBattlePower}</div>
                         </div>
 
                         {currentEnemy != null && (
@@ -863,50 +968,119 @@ export function AdventurePage () {
                         )}
 
                         <form onSubmit={handleSubmit}>
-                            <label>
-                                回答入力
-                                <input
-                                    ref={answerInputRef}
-                                    className="input-control"
-                                    type="text"
-                                    value={inputValue}
-                                    disabled={phase !== 'active'}
-                                    placeholder="ここに答えを入力"
-                                    inputMode={
-                                        currentQuestion?.answerKind === 'quotientRemainder'
-                                            ? 'text'
-                                            : (
-                                                currentQuestion?.course === 'div' &&
-                                                currentQuestion.inputHint?.includes('小数') === true
-                                                    ? 'decimal'
-                                                    : 'numeric'
-                                            )
-                                    }
-                                    enterKeyHint="done"
-                                    autoComplete="off"
-                                    autoCapitalize="off"
-                                    spellCheck={false}
-                                    lang="en"
-                                    pattern={
-                                        currentQuestion?.answerKind === 'quotientRemainder'
-                                            ? '[0-9\- ]*'
-                                            : '[0-9\-\.]*'
-                                    }
-                                    onFocus={() => {
-                                        setActiveInputMode('keyboard');
-                                    }}
-                                    onCompositionStart={() => {
-                                        isComposingRef.current = true;
-                                    }}
-                                    onCompositionEnd={() => {
-                                        isComposingRef.current = false;
-                                    }}
-                                    onKeyDown={handleInputKeyDown}
-                                    onChange={(event) => {
-                                        setInputValue(event.target.value);
-                                    }}
-                                />
-                            </label>
+                            {usesRemainderInputs === true ? (
+                                <div className="answer-split-grid">
+                                    <label className="answer-field-card">
+                                        <span className="answer-field-label">商</span>
+                                        <input
+                                            ref={mainInputRef}
+                                            className={`input-control answer-split-input ${activeAnswerField === 'main' ? 'is-active' : ''}`}
+                                            type="text"
+                                            value={mainInputValue}
+                                            disabled={phase !== 'active'}
+                                            placeholder="商を入力"
+                                            inputMode="numeric"
+                                            enterKeyHint="next"
+                                            autoComplete="off"
+                                            autoCapitalize="off"
+                                            spellCheck={false}
+                                            lang="en"
+                                            pattern="[0-9\-]*"
+                                            onFocus={() => {
+                                                setActiveInputMode('keyboard');
+                                                setActiveAnswerField('main');
+                                            }}
+                                            onCompositionStart={() => {
+                                                isComposingRef.current = true;
+                                            }}
+                                            onCompositionEnd={() => {
+                                                isComposingRef.current = false;
+                                            }}
+                                            onKeyDown={(event) => {
+                                                handleInputKeyDown(event, 'main');
+                                            }}
+                                            onChange={(event) => {
+                                                setMainInputValue(event.target.value);
+                                            }}
+                                        />
+                                    </label>
+
+                                    <label className="answer-field-card">
+                                        <span className="answer-field-label">余り</span>
+                                        <input
+                                            ref={remainderInputRef}
+                                            className={`input-control answer-split-input ${activeAnswerField === 'remainder' ? 'is-active' : ''}`}
+                                            type="text"
+                                            value={remainderInputValue}
+                                            disabled={phase !== 'active'}
+                                            placeholder="0"
+                                            inputMode="numeric"
+                                            enterKeyHint="done"
+                                            autoComplete="off"
+                                            autoCapitalize="off"
+                                            spellCheck={false}
+                                            lang="en"
+                                            pattern="[0-9]*"
+                                            onFocus={() => {
+                                                setActiveInputMode('keyboard');
+                                                setActiveAnswerField('remainder');
+                                            }}
+                                            onCompositionStart={() => {
+                                                isComposingRef.current = true;
+                                            }}
+                                            onCompositionEnd={() => {
+                                                isComposingRef.current = false;
+                                            }}
+                                            onKeyDown={(event) => {
+                                                handleInputKeyDown(event, 'remainder');
+                                            }}
+                                            onChange={(event) => {
+                                                setRemainderInputValue(event.target.value);
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                            ) : (
+                                <label>
+                                    回答入力
+                                    <input
+                                        ref={mainInputRef}
+                                        className="input-control"
+                                        type="text"
+                                        value={mainInputValue}
+                                        disabled={phase !== 'active'}
+                                        placeholder="ここに答えを入力"
+                                        inputMode={
+                                            currentQuestion?.course === 'div' &&
+                                            currentQuestion.inputHint?.includes('小数') === true
+                                                ? 'decimal'
+                                                : 'numeric'
+                                        }
+                                        enterKeyHint="done"
+                                        autoComplete="off"
+                                        autoCapitalize="off"
+                                        spellCheck={false}
+                                        lang="en"
+                                        pattern="[0-9\-\.]*"
+                                        onFocus={() => {
+                                            setActiveInputMode('keyboard');
+                                            setActiveAnswerField('main');
+                                        }}
+                                        onCompositionStart={() => {
+                                            isComposingRef.current = true;
+                                        }}
+                                        onCompositionEnd={() => {
+                                            isComposingRef.current = false;
+                                        }}
+                                        onKeyDown={(event) => {
+                                            handleInputKeyDown(event, 'main');
+                                        }}
+                                        onChange={(event) => {
+                                            setMainInputValue(event.target.value);
+                                        }}
+                                    />
+                                </label>
+                            )}
 
                             <div className="button-row top-gap">
                                 <button
@@ -937,11 +1111,11 @@ export function AdventurePage () {
                             <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('1'); }}>1</button>
                             <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('2'); }}>2</button>
                             <button type="button" className="keypad-button" disabled={phase !== 'active'} onClick={() => { appendInputValue('3'); }}>3</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (minusKeyEnabled === false)} onClick={() => { appendInputValue('-'); }}>-</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (minusKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('-'); }}>-</button>
 
                             <button type="button" className="keypad-button keypad-button-wide" disabled={phase !== 'active'} onClick={() => { appendInputValue('0'); }}>0</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (decimalKeyEnabled === false)} onClick={() => { appendInputValue('.'); }}>.</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (spaceKeyEnabled === false)} onClick={() => { appendInputValue(' '); }}>空白</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (decimalKeyEnabled === false) || (activeAnswerField === 'remainder')} onClick={() => { appendInputValue('.'); }}>.</button>
+                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || (usesRemainderInputs === false)} onClick={() => { handleRemainderToggle(); }}>{activeAnswerField === 'main' ? 'あまり' : '商へ'}</button>
                             <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || (canSubmitCurrentAnswer === false)} onClick={() => { handleTileSubmit(); }}>攻撃</button>
                         </div>
                     </section>
@@ -950,13 +1124,12 @@ export function AdventurePage () {
 
             {phase === 'select' && (
                 <section className="card">
-                    <h2>v1 で先に入れた内容</h2>
+                    <h2>今回の土台</h2>
                     <ul className="simple-list">
-                        <li>ダンジョン選択式の 60秒 チャレンジ</li>
-                        <li>4人パーティの総攻撃力制</li>
-                        <li>ザコA → ザコB → ザコC → ボス → 条件付きシークレット</li>
-                        <li>素材獲得 → 自動錬成 → 宝解放の基本ループ</li>
-                        <li>theme 定義ファイルで名称・素材・武器名・敵名を外出し</li>
+                        <li>問題レベルは各項目の最大桁数の平均値から算出</li>
+                        <li>冒険モードだけ割り算は重み付き抽選 + 上限比率つき</li>
+                        <li>演算種別数でバッジ階級、拡張条件数で + を付与</li>
+                        <li>高レベルほど敵も強いが、解けた計算の共鳴で味方の一撃も大きくなる</li>
                     </ul>
                 </section>
             )}
@@ -1042,6 +1215,52 @@ function getEffectiveSessionElapsedMs (
     );
 
     return Math.max(0, (now - sessionStartedAt - totalPausedMs - currentFeedbackPausedMs));
+}
+
+function focusAnswerField (
+    activeField: AnswerFieldType,
+    mainInputRef: RefObject<HTMLInputElement | null>,
+    remainderInputRef: RefObject<HTMLInputElement | null>,
+    usesRemainderInputs: boolean
+): void {
+    if ((usesRemainderInputs === true) && (activeField === 'remainder')) {
+        remainderInputRef.current?.focus();
+        remainderInputRef.current?.select();
+        return;
+    }
+
+    mainInputRef.current?.focus();
+    mainInputRef.current?.select();
+}
+
+function hasSubmittableMainInput (
+    value: string
+): boolean {
+    const trimmed = value.trim();
+
+    if (trimmed.length <= 0) {
+        return false;
+    }
+
+    return !['-', '.', '-.'].includes(trimmed);
+}
+
+function buildSubmittedAnswerText (
+    answerKind: AnswerKind,
+    mainInputValue: string,
+    remainderInputValue: string
+): string {
+    if (answerKind !== 'quotientRemainder') {
+        return mainInputValue;
+    }
+
+    const safeRemainder = (
+        remainderInputValue.trim().length > 0
+            ? remainderInputValue.trim()
+            : '0'
+    );
+
+    return `${mainInputValue.trim()} ${safeRemainder}`;
 }
 
 function formatAdventureSeconds (ms: number): string {

@@ -70,14 +70,19 @@ export function AdventureResultPage () {
                 <ul className="simple-list">
                     <li>ユーザー: {latestAdventureResult.userName}</li>
                     <li>挑戦ダンジョン: {latestAdventureResult.dungeonName}</li>
-                    <li>経過時間: {Math.ceil(latestAdventureResult.elapsedMs / 100) / 10} 秒 / {latestAdventureResult.totalTimeSec} 秒</li>
+                    <li>問題レベル: Lv{latestAdventureResult.problemLevel}</li>
+                    <li>挑戦バッジ: {latestAdventureResult.challengeBadgeLabel}</li>
+                    <li>経過時間: {formatFixedSeconds(latestAdventureResult.elapsedMs)} 秒 / {latestAdventureResult.totalTimeSec} 秒</li>
                     <li>解答数: {latestAdventureResult.questionsAnswered}</li>
                     <li>正答数: {latestAdventureResult.correctCount}</li>
                     <li>ミス数: {latestAdventureResult.missCount}</li>
                     <li>正答率: {latestAdventureResult.accuracyRate}%</li>
                     <li>総ダメージ: {latestAdventureResult.totalDamage}</li>
-                    <li>挑戦前総攻撃力: {latestAdventureResult.totalAttack}</li>
-                    <li>挑戦後総攻撃力: {latestAdventureResult.totalAttackAfterRun}</li>
+                    <li>基本戦力: {latestAdventureResult.totalAttack}</li>
+                    <li>今回の有効戦力: {latestAdventureResult.effectiveBattlePower}</li>
+                    <li>挑戦後基本戦力: {latestAdventureResult.totalAttackAfterRun}</li>
+                    <li>味方倍率: ×{latestAdventureResult.partyAttackRate.toFixed(2)}</li>
+                    <li>敵HP倍率: ×{latestAdventureResult.enemyHpRate.toFixed(2)}</li>
                     <li>討伐敵数: {latestAdventureResult.defeatedEnemyNames.length}</li>
                     <li>ボス撃破: {latestAdventureResult.bossDefeated === true ? 'あり' : 'なし'}</li>
                     <li>シークレット出現: {latestAdventureResult.secretAppeared === true ? 'あり' : 'なし'}</li>
@@ -183,7 +188,7 @@ export function AdventureResultPage () {
 
                                         <div className="result-detail-row">
                                             <span className="result-detail-label">回答時間</span>
-                                            <span className="result-detail-value">{Math.ceil(entry.elapsedMs / 100) / 10} 秒</span>
+                                            <span className="result-detail-value">{formatFixedSeconds(entry.elapsedMs)} 秒</span>
                                         </div>
 
                                         <div className="result-detail-row">
@@ -221,4 +226,8 @@ export function AdventureResultPage () {
             </section>
         </div>
     );
+}
+
+function formatFixedSeconds (ms: number): string {
+    return Math.max(0, (ms / 1000)).toFixed(1);
 }

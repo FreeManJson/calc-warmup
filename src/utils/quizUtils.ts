@@ -15,6 +15,34 @@ const COURSE_LABELS: Record<CourseType, string> = {
     div: '割り算',
 };
 
+export interface QuestionSelectionConfig {
+    courseWeights?: Partial<Record<CourseType, number>>;
+    divisionWithRemainderWeight?: number;
+    maxDivisionRatio?: number;
+    maxRemainderDivisionRatio?: number;
+}
+
+export const LEARNING_QUESTION_SELECTION_CONFIG: QuestionSelectionConfig = {
+    courseWeights: {
+        add: 1,
+        sub: 1,
+        mul: 1,
+        div: 1,
+    },
+};
+
+export const ADVENTURE_QUESTION_SELECTION_CONFIG: QuestionSelectionConfig = {
+    courseWeights: {
+        add: 1.0,
+        sub: 1.0,
+        mul: 0.9,
+        div: 0.7,
+    },
+    divisionWithRemainderWeight: 0.55,
+    maxDivisionRatio: 0.25,
+    maxRemainderDivisionRatio: 0.15,
+};
+
 export function getCourseLabel (course: CourseType): string {
     return COURSE_LABELS[course];
 }
@@ -29,18 +57,16 @@ export function getCourseLabelText (courses: CourseType[]): string {
     }).join(' / ');
 }
 
-export function generateQuestions (settings: QuizSettings): GeneratedQuestion[] {
+export function generateQuestions (
+    settings: QuizSettings,
+    selectionConfig: QuestionSelectionConfig = LEARNING_QUESTION_SELECTION_CONFIG
+): GeneratedQuestion[] {
     const questions: GeneratedQuestion[] = [];
-    const safeCourses: CourseType[] = (
-        settings.selectedCourses.length > 0
-            ? settings.selectedCourses
-            : ['add']
-    );
+    const courseSequence = buildQuestionCourseSequence(settings, selectionConfig);
 
-    for (let lpIndex = 0; lpIndex < settings.questionCount; lpIndex += 1) {
-        const course = pickRandomCourse(safeCourses);
-        questions.push(generateSingleQuestion(course, settings, lpIndex));
-    }
+    courseSequence.forEach((course, index) => {
+        questions.push(generateSingleQuestion(course, settings, index));
+    });
 
     return questions;
 }
@@ -54,7 +80,7 @@ export function compareAnswer (
     if (question.answerKind === 'quotientRemainder') {
         const matches = trimmed.match(/-?\d+/g);
 
-        if ((matches == null) || (matches.length < 2) || (question.expectedParts == null)) {
+        if ((matches == null) || (matches.length < 1) || (question.expectedParts == null)) {
             return {
                 isCorrect: false,
                 normalizedInput: trimmed,
@@ -62,8 +88,8 @@ export function compareAnswer (
         }
 
         const quotient = Number(matches[0]);
-        const remainder = Number(matches[1]);
-        const normalizedInput = `${quotient} ${remainder}`;
+        const remainder = Number(matches[1] ?? '0');
+        const normalizedInput = `商 ${quotient} / 余り ${remainder}`;
         const isCorrect = (
             (quotient === question.expectedParts[0]) &&
             (remainder === question.expectedParts[1])
@@ -109,9 +135,113 @@ export function formatNumber (
     return value.toFixed(fractionDigits).replace(/\.?0+$/, '');
 }
 
-function pickRandomCourse (courses: CourseType[]): CourseType {
-    const index = randomInt(0, (courses.length - 1));
-    return courses[index];
+function buildQuestionCourseSequence (
+    settings: QuizSettings,
+    selectionConfig: QuestionSelectionConfig
+): CourseType[] {
+    const safeCourses: CourseType[] = (
+        settings.selectedCourses.length > 0
+            ? settings.selectedCourses
+            : ['add']
+    );
+    const sequence: CourseType[] = [];
+    const divisionLimit = resolveDivisionLimit(settings, selectionConfig);
+    let divisionCount = 0;
+
+    for (let lpIndex = 0; lpIndex < settings.questionCount; lpIndex += 1) {
+        const selectableCourses = safeCourses.filter((course) => {
+            if (course !== 'div') {
+                return true;
+            }
+
+            if (divisionLimit == null) {
+                return true;
+            }
+
+            return (divisionCount < divisionLimit);
+        });
+        const candidateCourses = (
+            selectableCourses.length > 0
+                ? selectableCourses
+                : safeCourses
+        );
+        const nextCourse = pickWeightedCourse(candidateCourses, settings, selectionConfig);
+
+        sequence.push(nextCourse);
+
+        if (nextCourse === 'div') {
+            divisionCount += 1;
+        }
+    }
+
+    return sequence;
+}
+
+function resolveDivisionLimit (
+    settings: QuizSettings,
+    selectionConfig: QuestionSelectionConfig
+): number | null {
+    if (settings.selectedCourses.includes('div') === false) {
+        return null;
+    }
+
+    const rawRatio = (
+        settings.allowRemainder === true
+            ? selectionConfig.maxRemainderDivisionRatio
+            : selectionConfig.maxDivisionRatio
+    );
+
+    if ((rawRatio == null) || (rawRatio <= 0)) {
+        return null;
+    }
+
+    return Math.max(1, Math.floor(settings.questionCount * rawRatio));
+}
+
+function pickWeightedCourse (
+    courses: CourseType[],
+    settings: QuizSettings,
+    selectionConfig: QuestionSelectionConfig
+): CourseType {
+    const weightedCourses = courses.map((course) => {
+        return {
+            course,
+            weight: getCourseWeight(course, settings, selectionConfig),
+        };
+    });
+    const totalWeight = weightedCourses.reduce((sum, item) => {
+        return (sum + item.weight);
+    }, 0);
+
+    if (totalWeight <= 0) {
+        const index = randomInt(0, (courses.length - 1));
+        return courses[index];
+    }
+
+    let roll = (Math.random() * totalWeight);
+
+    for (let lpIndex = 0; lpIndex < weightedCourses.length; lpIndex += 1) {
+        const item = weightedCourses[lpIndex];
+        roll -= item.weight;
+
+        if (roll <= 0) {
+            return item.course;
+        }
+    }
+
+    return weightedCourses[weightedCourses.length - 1].course;
+}
+
+function getCourseWeight (
+    course: CourseType,
+    settings: QuizSettings,
+    selectionConfig: QuestionSelectionConfig
+): number {
+    if ((course === 'div') && (settings.allowRemainder === true)) {
+        return Math.max(0.01, selectionConfig.divisionWithRemainderWeight ?? selectionConfig.courseWeights?.div ?? 1);
+    }
+
+    return Math.max(0.01, selectionConfig.courseWeights?.[course] ?? 1);
 }
 
 function generateSingleQuestion (
@@ -379,7 +509,7 @@ function generateDivisionQuestion (
             answerKind: 'quotientRemainder',
             correctText: `商 ${quotient} / 余り ${remainder}`,
             expectedParts: [quotient, remainder],
-            inputHint: '商と余りを半角スペース区切りで入力（例: 12 3）',
+            inputHint: '商と余りを分けて入力してください（余り欄が空欄なら 0 扱い）',
             difficultyInput,
         };
     }

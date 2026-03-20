@@ -87,6 +87,30 @@ button:disabled {
     gap: 12px;
 }
 
+.answer-split-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.answer-field-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.answer-field-label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #445;
+}
+
+.answer-split-input.is-active {
+    border-color: #7aa2eb;
+    box-shadow: 0 0 0 3px rgba(122, 162, 235, 0.18);
+}
+
+
 .check-group {
     display: grid;
     gap: 10px;
@@ -838,6 +862,23 @@ button:disabled {
 .adventure-status-card {
     border-color: #d9deea;
 }
+
+
+.adventure-badge-value {
+    font-size: 18px;
+}
+
+.adventure-balance-note {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background-color: #f7faff;
+    border: 1px solid #d9e6fb;
+    color: #334;
+    font-size: 14px;
+}
+
 
 .party-chip-row {
     display: grid;

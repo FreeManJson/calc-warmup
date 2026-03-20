@@ -1,6 +1,3 @@
-import {
-    generateQuestions,
-} from './quizUtils';
 import type {
     AdventureBattleLogEntry,
     AdventureDungeonProgress,
@@ -13,20 +10,24 @@ import type {
     QuizSettings,
     UserAdventureProgress,
 } from '../types/appTypes';
+import {
+    ADVENTURE_QUESTION_SELECTION_CONFIG,
+    generateQuestions,
+} from './quizUtils';
 
 export const ADVENTURE_CONSTANTS = {
     totalTimeSec: 60,
-    secretBossTimeLimitSec: 30,
-    feedbackDelayMs: {
-        correct: 700,
-        wrong: 900,
-        timeout: 900,
-    },
     questionPoolSize: 120,
-    baseAttack: 10,
+    secretBossTimeLimitSec: 30,
     weaponMaterialCost: 5,
-    weaponAttackBonus: 1,
-    treasureAttackBonus: 2,
+    baseAttack: 10,
+    weaponAttackBonus: 2,
+    treasureAttackBonus: 4,
+    feedbackDelayMs: {
+        correct: 900,
+        wrong: 1200,
+        timeout: 1200,
+    },
     enemyHpCoefficients: {
         mobA: 2,
         mobB: 3,
@@ -61,6 +62,20 @@ const TROPHY_LABELS: Record<string, string> = {
     firstSecretKill: 'シークレット討伐',
 };
 
+const ADVENTURE_BADGE_TIERS = ['ブロンズ', 'シルバー', 'ゴールド', 'プラチナ'] as const;
+
+const ADVENTURE_LEVEL_BALANCE: Record<number, { enemyHpRate: number; partyAttackRate: number }> = {
+    1: { enemyHpRate: 1.00, partyAttackRate: 1.00 },
+    2: { enemyHpRate: 1.18, partyAttackRate: 1.30 },
+    3: { enemyHpRate: 1.36, partyAttackRate: 1.65 },
+    4: { enemyHpRate: 1.54, partyAttackRate: 2.00 },
+    5: { enemyHpRate: 1.72, partyAttackRate: 2.40 },
+    6: { enemyHpRate: 1.90, partyAttackRate: 2.85 },
+    7: { enemyHpRate: 2.08, partyAttackRate: 3.35 },
+    8: { enemyHpRate: 2.26, partyAttackRate: 3.90 },
+    9: { enemyHpRate: 2.44, partyAttackRate: 4.50 },
+};
+
 export interface AdventureOverview {
     totalAttack: number;
     totalCraftedWeapons: number;
@@ -86,7 +101,12 @@ export interface AdventureSessionSummaryInput {
     dungeonId: string;
     totalTimeSec: number;
     elapsedMs: number;
+    problemLevel: number;
+    challengeBadgeLabel: string;
+    partyAttackRate: number;
+    enemyHpRate: number;
     totalAttack: number;
+    effectiveBattlePower: number;
     totalAttackAfterRun: number;
     battleLog: AdventureBattleLogEntry[];
     defeatedEnemySlots: EnemySlotType[];
@@ -95,6 +115,14 @@ export interface AdventureSessionSummaryInput {
     newlyCraftedWeaponNames: string[];
     treasureUnlockedThisRun: boolean;
     trophiesUnlocked: string[];
+}
+
+export interface AdventureChallengeBadge {
+    courseCount: number;
+    plusCount: number;
+    tierLabel: string;
+    label: string;
+    isMaster: boolean;
 }
 
 export function createDefaultAdventureProgress (
@@ -179,7 +207,50 @@ export function buildAdventureQuestionPool (
         ...settings,
         questionCount: ADVENTURE_CONSTANTS.questionPoolSize,
         timeLimitEnabled: false,
-    });
+    }, ADVENTURE_QUESTION_SELECTION_CONFIG);
+}
+
+export function computeProblemLevel (
+    settings: QuizSettings
+): number {
+    const effectiveTermCount = Math.max(1, settings.maxTerms);
+    const targetDigits = settings.termMaxDigits.slice(0, effectiveTermCount);
+
+    if (targetDigits.length <= 0) {
+        return 1;
+    }
+
+    const sum = targetDigits.reduce((acc, digits) => {
+        return (acc + Math.max(1, Math.floor(digits)));
+    }, 0);
+
+    return clampProblemLevel(Math.floor(sum / targetDigits.length));
+}
+
+export function getAdventureLevelBalance (
+    problemLevel: number
+): { enemyHpRate: number; partyAttackRate: number } {
+    const safeLevel = clampProblemLevel(problemLevel);
+    return ADVENTURE_LEVEL_BALANCE[safeLevel] ?? ADVENTURE_LEVEL_BALANCE[1];
+}
+
+export function buildAdventureChallengeBadge (
+    settings: QuizSettings
+): AdventureChallengeBadge {
+    const courseCount = Math.max(1, settings.selectedCourses.length);
+    const plusCount = countEffectiveModifierOptions(settings);
+    const tierIndex = Math.max(0, Math.min((courseCount - 1), (ADVENTURE_BADGE_TIERS.length - 1)));
+    const tierLabel = ADVENTURE_BADGE_TIERS[tierIndex];
+    const maxPlusCount = getMaxEffectiveModifierCount(settings);
+    const isMaster = ((courseCount >= 4) && (plusCount >= maxPlusCount));
+
+    return {
+        courseCount,
+        plusCount,
+        tierLabel,
+        label: (isMaster === true ? 'プラチナマスター' : `${tierLabel}${'+'.repeat(plusCount)}`),
+        isMaster,
+    };
 }
 
 export function getAdventureDungeonById (
@@ -193,12 +264,13 @@ export function getAdventureDungeonById (
 
 export function buildAdventureEnemySequence (
     theme: AdventureTheme,
-    dungeonId: string
+    dungeonId: string,
+    problemLevel: number
 ): AdventureEnemyState[] {
     const dungeon = getAdventureDungeonById(theme, dungeonId);
 
     return buildEnemySlots().map((slot) => {
-        const maxHp = calculateEnemyMaxHp(dungeonId, slot);
+        const maxHp = calculateEnemyMaxHp(dungeonId, slot, problemLevel);
 
         return {
             slot,
@@ -212,11 +284,13 @@ export function buildAdventureEnemySequence (
 
 export function calculateEnemyMaxHp (
     dungeonId: string,
-    slot: EnemySlotType
+    slot: EnemySlotType,
+    problemLevel: number
 ): number {
     const recommendedAttack = getRecommendedAttackForDungeon(dungeonId);
     const coefficient = ADVENTURE_CONSTANTS.enemyHpCoefficients[slot];
-    return (recommendedAttack * coefficient);
+    const balance = getAdventureLevelBalance(problemLevel);
+    return Math.max(1, Math.floor(recommendedAttack * balance.enemyHpRate * coefficient));
 }
 
 export function calculateTotalAttack (
@@ -237,6 +311,22 @@ export function calculateTotalAttack (
     });
 
     return totalAttack;
+}
+
+export function calculateEffectiveAdventureAttack (
+    totalAttack: number,
+    problemLevel: number
+): number {
+    const balance = getAdventureLevelBalance(problemLevel);
+    return Math.max(1, Math.floor(totalAttack * balance.partyAttackRate));
+}
+
+export function calculateRecommendedBattlePower (
+    dungeonId: string,
+    problemLevel: number
+): number {
+    const baseAttack = getRecommendedAttackForDungeon(dungeonId);
+    return calculateEffectiveAdventureAttack(baseAttack, problemLevel);
 }
 
 export function buildAdventureOverview (
@@ -405,12 +495,17 @@ export function buildAdventureResult (
         treasureName: dungeon.treasureName,
         totalTimeSec: input.totalTimeSec,
         elapsedMs: input.elapsedMs,
+        problemLevel: input.problemLevel,
+        challengeBadgeLabel: input.challengeBadgeLabel,
+        partyAttackRate: input.partyAttackRate,
+        enemyHpRate: input.enemyHpRate,
+        totalAttack: input.totalAttack,
+        effectiveBattlePower: input.effectiveBattlePower,
+        totalAttackAfterRun: input.totalAttackAfterRun,
         questionsAnswered,
         correctCount,
         missCount,
         accuracyRate,
-        totalAttack: input.totalAttack,
-        totalAttackAfterRun: input.totalAttackAfterRun,
         totalDamage,
         defeatedEnemySlots: input.defeatedEnemySlots,
         defeatedEnemyNames,
@@ -538,6 +633,50 @@ function buildAdventureStageLabel (
     }
 
     return 'ザコA挑戦中';
+}
+
+function countEffectiveModifierOptions (
+    settings: QuizSettings
+): number {
+    let plusCount = 0;
+
+    if (settings.allowNegative === true) {
+        plusCount += 1;
+    }
+
+    if (settings.allowDecimal === true) {
+        plusCount += 1;
+    }
+
+    if (settings.selectedCourses.includes('div') === true) {
+        if (settings.allowRemainder === true) {
+            plusCount += 1;
+        }
+
+        if (settings.allowRealDivision === true) {
+            plusCount += 1;
+        }
+    }
+
+    return plusCount;
+}
+
+function getMaxEffectiveModifierCount (
+    settings: QuizSettings
+): number {
+    return countEffectiveModifierOptions({
+        ...settings,
+        allowNegative: true,
+        allowDecimal: true,
+        allowRemainder: settings.selectedCourses.includes('div'),
+        allowRealDivision: settings.selectedCourses.includes('div'),
+    });
+}
+
+function clampProblemLevel (
+    value: number
+): number {
+    return Math.max(1, Math.min(9, Math.floor(value)));
 }
 
 function toSafeInteger (
