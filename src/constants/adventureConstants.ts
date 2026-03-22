@@ -8,6 +8,12 @@ export const ADVENTURE_SECRET_UNLOCK_SECONDS = 30;
 export const ADVENTURE_WEAPON_MATERIAL_REQUIREMENT = 5;
 export const ADVENTURE_COMPLETE_PARTY_REWARD_COUNT = 4;
 
+export const ADVENTURE_FEEDBACK_DELAY_MS = {
+    correct: 1150,
+    wrong: 1500,
+    timeout: 1500,
+};
+
 export const ADVENTURE_STAGE_ORDER: AdventureStageKey[] = [
     'mobA',
     'mobB',

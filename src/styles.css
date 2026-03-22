@@ -846,3 +846,74 @@ button:disabled {
         width: 100%;
     }
 }
+
+.dungeon-card-article {
+    display: grid;
+    align-content: start;
+    gap: 0;
+}
+
+.dungeon-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dungeon-inline-detail {
+    border-top: 1px dashed #d9deea;
+    padding-top: 12px;
+}
+
+.adventure-timer-badge {
+    font-size: 18px;
+    padding: 8px 14px;
+}
+
+.adventure-stage-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.adventure-stage-chip {
+    border: 1px solid #d9deea;
+    border-radius: 12px;
+    padding: 12px;
+    background-color: #fbfdff;
+}
+
+.adventure-stage-chip.is-current {
+    border-color: #7ea4ea;
+    background-color: #eef5ff;
+}
+
+.adventure-stage-chip.is-cleared {
+    border-color: #9ed2a3;
+    background-color: #eefcf0;
+}
+
+.adventure-stage-chip.is-waiting {
+    opacity: 0.9;
+}
+
+.adventure-stage-chip-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #5f6d8a;
+}
+
+.adventure-stage-chip-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 4px 0;
+}
+
+@media (max-width: 640px) {
+    .dungeon-action-row {
+        flex-direction: column;
+    }
+
+    .dungeon-action-row button {
+        width: 100%;
+    }
+}

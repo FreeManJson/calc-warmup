@@ -15,6 +15,11 @@ import {
     createDefaultSettings,
     createDefaultUsers,
 } from '../constants/defaultSettings';
+import { defaultFantasyTheme } from '../themes/defaultFantasyTheme';
+import type {
+    AdventureResult,
+    AdventureSession,
+} from '../types/adventureTypes';
 import type {
     CourseType,
     CurrentQuiz,
@@ -24,6 +29,10 @@ import type {
     RankingEntry,
     UserProfile,
 } from '../types/appTypes';
+import {
+    createAdventureSession,
+    buildAdventureResult,
+} from '../utils/adventureUtils';
 import {
     generateQuestions,
 } from '../utils/quizUtils';
@@ -56,9 +65,15 @@ interface AppContextType {
     latestResult: QuizResult | null;
     ranking: RankingEntry[];
     lastRankingEntryId: string | null;
+    currentAdventure: AdventureSession | null;
+    latestAdventureResult: AdventureResult | null;
     startQuiz: (overrideSettings?: QuizSettings) => boolean;
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
+    startAdventure: (dungeonId: string, overrideSettings?: QuizSettings) => boolean;
+    setCurrentAdventure: (nextAdventure: AdventureSession | null) => void;
+    finishAdventure: (result?: AdventureResult | null) => void;
+    clearAdventureResult: () => void;
     addUser: (name: string) => AddUserResult;
     renameUser: (userId: string, nextName: string) => RenameUserResult;
     deleteUser: (userId: string) => DeleteUserResult;
@@ -132,6 +147,12 @@ export function AppProvider (
 
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
     const [lastRankingEntryId, setLastRankingEntryId] = useState<string | null>(null);
+    const [currentAdventure, setCurrentAdventureState] = useState<AdventureSession | null>(() => {
+        return readJson<AdventureSession | null>(STORAGE_KEYS.currentAdventure, null);
+    });
+    const [latestAdventureResult, setLatestAdventureResult] = useState<AdventureResult | null>(() => {
+        return readJson<AdventureResult | null>(STORAGE_KEYS.latestAdventureResult, null);
+    });
 
     useEffect(() => {
         if (users.length <= 0) {
@@ -191,6 +212,14 @@ export function AppProvider (
     useEffect(() => {
         writeJson(STORAGE_KEYS.latestResult, latestResult);
     }, [latestResult]);
+
+    useEffect(() => {
+        writeJson(STORAGE_KEYS.currentAdventure, currentAdventure);
+    }, [currentAdventure]);
+
+    useEffect(() => {
+        writeJson(STORAGE_KEYS.latestAdventureResult, latestAdventureResult);
+    }, [latestAdventureResult]);
 
     const quizSettings = (
         settingsByUserId[selectedUserId] ?? createDefaultSettings()
@@ -307,6 +336,61 @@ export function AppProvider (
         setCurrentQuiz(null);
     }, [ranking]);
 
+    const startAdventure = useCallback((dungeonId: string, overrideSettings?: QuizSettings) => {
+        const snapshot = normalizeQuizSettings(overrideSettings ?? quizSettings);
+        const selectedUser = users.find((user) => {
+            return (user.id === selectedUserId);
+        });
+
+        if (selectedUser == null) {
+            return false;
+        }
+
+        const nextAdventure = createAdventureSession(
+            selectedUser.id,
+            selectedUser.name,
+            snapshot,
+            defaultFantasyTheme,
+            dungeonId
+        );
+
+        if (nextAdventure == null) {
+            return false;
+        }
+
+        setSettingsByUserId((prevMap) => {
+            return {
+                ...prevMap,
+                [selectedUserId]: snapshot,
+            };
+        });
+
+        setCurrentAdventureState(nextAdventure);
+        return true;
+    }, [quizSettings, selectedUserId, users]);
+
+    const setCurrentAdventure = useCallback((nextAdventure: AdventureSession | null) => {
+        setCurrentAdventureState(nextAdventure);
+    }, []);
+
+    const finishAdventure = useCallback((result?: AdventureResult | null) => {
+        const nextResult = result ?? (
+            currentAdventure != null
+                ? buildAdventureResult(currentAdventure)
+                : null
+        );
+
+        if (nextResult != null) {
+            setLatestAdventureResult(nextResult);
+        }
+
+        setCurrentAdventureState(null);
+    }, [currentAdventure]);
+
+    const clearAdventureResult = useCallback(() => {
+        setLatestAdventureResult(null);
+    }, []);
+
     const addUser = useCallback((name: string): AddUserResult => {
         const trimmed = name.trim();
 
@@ -350,7 +434,6 @@ export function AppProvider (
             ok: true,
         };
     }, [users]);
-
 
     const renameUser = useCallback((
         userId: string,
@@ -435,6 +518,28 @@ export function AppProvider (
             };
         });
 
+        setLatestAdventureResult((prevResult) => {
+            if ((prevResult == null) || (prevResult.userName !== oldName)) {
+                return prevResult;
+            }
+
+            return {
+                ...prevResult,
+                userName: trimmed,
+            };
+        });
+
+        setCurrentAdventureState((prevAdventure) => {
+            if ((prevAdventure == null) || (prevAdventure.userId !== userId)) {
+                return prevAdventure;
+            }
+
+            return {
+                ...prevAdventure,
+                userName: trimmed,
+            };
+        });
+
         return {
             ok: true,
         };
@@ -477,6 +582,22 @@ export function AppProvider (
             });
         });
 
+        setLatestAdventureResult((prevResult) => {
+            if ((prevResult != null) && (prevResult.userId === userId)) {
+                return null;
+            }
+
+            return prevResult;
+        });
+
+        setCurrentAdventureState((prevAdventure) => {
+            if ((prevAdventure != null) && (prevAdventure.userId === userId)) {
+                return null;
+            }
+
+            return prevAdventure;
+        });
+
         if (selectedUserId === userId) {
             setSelectedUserIdState(nextUsers[0].id);
         }
@@ -502,9 +623,15 @@ export function AppProvider (
             latestResult,
             ranking,
             lastRankingEntryId,
+            currentAdventure,
+            latestAdventureResult,
             startQuiz,
             clearQuiz,
             finishQuiz,
+            startAdventure,
+            setCurrentAdventure,
+            finishAdventure,
+            clearAdventureResult,
             addUser,
             renameUser,
             deleteUser,
@@ -520,9 +647,15 @@ export function AppProvider (
         latestResult,
         ranking,
         lastRankingEntryId,
+        currentAdventure,
+        latestAdventureResult,
         startQuiz,
         clearQuiz,
         finishQuiz,
+        startAdventure,
+        setCurrentAdventure,
+        finishAdventure,
+        clearAdventureResult,
         addUser,
         renameUser,
         deleteUser,
@@ -733,6 +866,11 @@ function writeJson (key: string, value: unknown): void {
     }
 
     try {
+        if (value == null) {
+            window.localStorage.removeItem(key);
+            return;
+        }
+
         window.localStorage.setItem(key, JSON.stringify(value));
     } catch {
         // 何もしない
