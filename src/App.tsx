@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { AdventureHubPage } from './pages/AdventureHubPage';
 import { RankingPage } from './pages/RankingPage';
 import { QuizPage } from './pages/QuizPage';
 import { ResultPage } from './pages/ResultPage';
@@ -14,6 +15,7 @@ export default function App () {
                     <Route path="/" element={<TopPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/quiz" element={<QuizPage />} />
+                    <Route path="/adventure" element={<AdventureHubPage />} />
                     <Route path="/result" element={<ResultPage />} />
                     <Route path="/ranking" element={<RankingPage />} />
                 </Routes>

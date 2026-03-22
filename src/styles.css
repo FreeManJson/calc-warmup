@@ -725,3 +725,124 @@ button:disabled {
         align-items: flex-start;
     }
 }
+
+.hero-start-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f5f9ff 100%);
+    border-color: #c9d8fb;
+}
+
+.hero-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.hero-subtext {
+    max-width: 760px;
+}
+
+.hero-action-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.primary-button-large {
+    min-height: 60px;
+    font-size: 20px;
+}
+
+.secondary-hero-button {
+    min-height: 60px;
+    font-weight: bold;
+    background-color: #ffffff;
+}
+
+.summary-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.summary-toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.summary-subtext {
+    margin: 4px 0 0;
+}
+
+.summary-toggle-button {
+    min-width: 116px;
+    font-weight: bold;
+}
+
+.adventure-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.dungeon-card {
+    border: 1px solid #d9deea;
+    border-radius: 12px;
+    padding: 14px;
+    background-color: #fbfcff;
+    text-align: left;
+}
+
+.dungeon-select-button {
+    width: 100%;
+}
+
+.dungeon-select-button.is-selected {
+    border-color: #9db9ef;
+    background-color: #eef5ff;
+}
+
+.dungeon-card-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.dungeon-detail-card h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 17px;
+}
+
+.compact-list li + li {
+    margin-top: 4px;
+}
+
+.ordered-list {
+    padding-left: 22px;
+}
+
+.challenge-ready-card {
+    border-color: #d4d7a8;
+    background-color: #fffdea;
+}
+
+@media (max-width: 640px) {
+    .page-container {
+        padding: 14px;
+    }
+
+    .hero-title-row,
+    .summary-toggle-row,
+    .quiz-header,
+    .status-row {
+        flex-direction: column;
+    }
+
+    .primary-button-large,
+    .secondary-hero-button {
+        width: 100%;
+    }
+}

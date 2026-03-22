@@ -27,7 +27,6 @@ export function createDefaultSettings (): QuizSettings {
 
 export function createDefaultUsers (): UserProfile[] {
     return [
-        { id: 'father', name: 'お父さん' },
-        { id: 'son', name: '息子' },
+        { id: 'hero-1', name: '名も無き勇者' },
     ];
 }

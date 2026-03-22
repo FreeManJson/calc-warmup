@@ -41,6 +41,11 @@ interface DeleteUserResult {
     message?: string;
 }
 
+interface RenameUserResult {
+    ok: boolean;
+    message?: string;
+}
+
 interface AppContextType {
     users: UserProfile[];
     selectedUserId: string;
@@ -55,6 +60,7 @@ interface AppContextType {
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
     addUser: (name: string) => AddUserResult;
+    renameUser: (userId: string, nextName: string) => RenameUserResult;
     deleteUser: (userId: string) => DeleteUserResult;
     clearRanking: () => void;
 }
@@ -345,6 +351,95 @@ export function AppProvider (
         };
     }, [users]);
 
+
+    const renameUser = useCallback((
+        userId: string,
+        nextName: string
+    ): RenameUserResult => {
+        const trimmed = nextName.trim();
+
+        if (trimmed.length <= 0) {
+            return {
+                ok: false,
+                message: 'ユーザー名を入力してください。',
+            };
+        }
+
+        const targetUser = users.find((user) => {
+            return (user.id === userId);
+        });
+
+        if (targetUser == null) {
+            return {
+                ok: false,
+                message: '変更対象ユーザーが見つかりません。',
+            };
+        }
+
+        const duplicated = users.some((user) => {
+            return (
+                (user.id !== userId) &&
+                (user.name.toLowerCase() === trimmed.toLowerCase())
+            );
+        });
+
+        if (duplicated === true) {
+            return {
+                ok: false,
+                message: '同名ユーザーが既に存在します。',
+            };
+        }
+
+        const oldName = targetUser.name;
+
+        if (oldName === trimmed) {
+            return {
+                ok: true,
+            };
+        }
+
+        setUsers((prevUsers) => {
+            return prevUsers.map((user) => {
+                if (user.id === userId) {
+                    return {
+                        ...user,
+                        name: trimmed,
+                    };
+                }
+
+                return user;
+            });
+        });
+
+        setRanking((prevRanking) => {
+            return prevRanking.map((entry) => {
+                if (entry.userName === oldName) {
+                    return {
+                        ...entry,
+                        userName: trimmed,
+                    };
+                }
+
+                return entry;
+            });
+        });
+
+        setLatestResult((prevResult) => {
+            if ((prevResult == null) || (prevResult.userName !== oldName)) {
+                return prevResult;
+            }
+
+            return {
+                ...prevResult,
+                userName: trimmed,
+            };
+        });
+
+        return {
+            ok: true,
+        };
+    }, [users]);
+
     const deleteUser = useCallback((userId: string): DeleteUserResult => {
         if (users.length <= 1) {
             return {
@@ -411,6 +506,7 @@ export function AppProvider (
             clearQuiz,
             finishQuiz,
             addUser,
+            renameUser,
             deleteUser,
             clearRanking,
         };
@@ -428,6 +524,7 @@ export function AppProvider (
         clearQuiz,
         finishQuiz,
         addUser,
+        renameUser,
         deleteUser,
         clearRanking,
     ]);
