@@ -917,3 +917,48 @@ button:disabled {
         width: 100%;
     }
 }
+
+.answer-layout {
+    display: grid;
+    gap: 12px;
+}
+
+.dual-answer-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.inline-input-mode-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.tile-target-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.input-error-text {
+    color: #c43636;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+@media (max-width: 640px) {
+    .dual-answer-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .inline-input-mode-row,
+    .tile-target-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}

@@ -148,10 +148,12 @@ export function AppProvider (
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
     const [lastRankingEntryId, setLastRankingEntryId] = useState<string | null>(null);
     const [currentAdventure, setCurrentAdventureState] = useState<AdventureSession | null>(() => {
-        return readJson<AdventureSession | null>(STORAGE_KEYS.currentAdventure, null);
+        const storedAdventure = readJson<unknown>(STORAGE_KEYS.currentAdventure, null);
+        return normalizeAdventureSession(storedAdventure);
     });
     const [latestAdventureResult, setLatestAdventureResult] = useState<AdventureResult | null>(() => {
-        return readJson<AdventureResult | null>(STORAGE_KEYS.latestAdventureResult, null);
+        const storedResult = readJson<unknown>(STORAGE_KEYS.latestAdventureResult, null);
+        return normalizeAdventureResult(storedResult);
     });
 
     useEffect(() => {
@@ -875,4 +877,97 @@ function writeJson (key: string, value: unknown): void {
     } catch {
         // 何もしない
     }
+}
+
+
+function normalizeAdventureSession (raw: unknown): AdventureSession | null {
+    if (isPlainObject(raw) === false) {
+        return null;
+    }
+
+    if (typeof raw.id !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.userId !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.userName !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.dungeonId !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.dungeonName !== 'string') {
+        return null;
+    }
+
+    if (isPlainObject(raw.settingsSnapshot) === false) {
+        return null;
+    }
+
+    if (isPlainObject(raw.preview) === false) {
+        return null;
+    }
+
+    if (isPlainObject(raw.enemyStates) === false) {
+        return null;
+    }
+
+    if (Array.isArray(raw.defeatedStages) === false) {
+        return null;
+    }
+
+    if (Array.isArray(raw.battleLog) === false) {
+        return null;
+    }
+
+    return raw as AdventureSession;
+}
+
+function normalizeAdventureResult (raw: unknown): AdventureResult | null {
+    if (isPlainObject(raw) === false) {
+        return null;
+    }
+
+    if (typeof raw.userId !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.userName !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.dungeonId !== 'string') {
+        return null;
+    }
+
+    if (typeof raw.dungeonName !== 'string') {
+        return null;
+    }
+
+    if (isPlainObject(raw.settingsSnapshot) === false) {
+        return null;
+    }
+
+    if (isPlainObject(raw.preview) === false) {
+        return null;
+    }
+
+    if (Array.isArray(raw.defeatedStages) === false) {
+        return null;
+    }
+
+    if (Array.isArray(raw.battleLog) === false) {
+        return null;
+    }
+
+    return raw as AdventureResult;
+}
+
+function isPlainObject (value: unknown): value is Record<string, unknown> {
+    return ((typeof value === 'object') && (value != null));
 }

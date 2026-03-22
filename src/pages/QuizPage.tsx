@@ -15,6 +15,7 @@ import {
 type PhaseType = 'countdown' | 'active' | 'feedback';
 type ActiveInputModeType = 'keyboard' | 'tile';
 type FeedbackKindType = 'correct' | 'wrong' | 'timeout' | null;
+type TileTargetType = 'answer' | 'quotient' | 'remainder';
 
 export function QuizPage () {
     const navigate = useNavigate();
@@ -29,7 +30,10 @@ export function QuizPage () {
     const [phase, setPhase] = useState<PhaseType>('countdown');
     const [countdownValue, setCountdownValue] = useState<number>(3);
     const [currentIndex, setCurrentIndex] = useState<number>(0);
-    const [inputValue, setInputValue] = useState<string>('');
+    const [answerValue, setAnswerValue] = useState<string>('');
+    const [quotientValue, setQuotientValue] = useState<string>('');
+    const [remainderValue, setRemainderValue] = useState<string>('');
+    const [tileTarget, setTileTarget] = useState<TileTargetType>('answer');
     const [answers, setAnswers] = useState<AnswerResult[]>([]);
     const [questionStartedAt, setQuestionStartedAt] = useState<number | null>(null);
     const [pausedAt, setPausedAt] = useState<number | null>(null);
@@ -43,12 +47,16 @@ export function QuizPage () {
     const [feedbackEquationLeft, setFeedbackEquationLeft] = useState<string>('');
     const [feedbackEquationAnswer, setFeedbackEquationAnswer] = useState<string>('');
     const [feedbackSubText, setFeedbackSubText] = useState<string>('');
+    const [validationMessage, setValidationMessage] = useState<string>('');
     const [activeInputMode, setActiveInputMode] = useState<ActiveInputModeType>(() => {
         return resolveInitialInteractiveInputMode('auto');
     });
 
     const nextTimeoutRef = useRef<number | null>(null);
     const answerInputRef = useRef<HTMLInputElement | null>(null);
+    const quotientInputRef = useRef<HTMLInputElement | null>(null);
+    const remainderInputRef = useRef<HTMLInputElement | null>(null);
+    const questionSectionRef = useRef<HTMLElement | null>(null);
     const isComposingRef = useRef<boolean>(false);
 
     const currentQuestion = useMemo(() => {
@@ -69,19 +77,19 @@ export function QuizPage () {
     }, [questionStartedAt, pausedAt, nowTick, pausedMs]);
 
     const paused = (pausedAt != null);
-
     const decimalKeyEnabled = (
         (currentQuiz?.settingsSnapshot.allowDecimal === true) ||
         (currentQuiz?.settingsSnapshot.allowRealDivision === true)
     );
-
-    const spaceKeyEnabled = (
-        currentQuestion?.answerKind === 'quotientRemainder'
-    );
-
     const minusKeyEnabled = (
         (currentQuiz?.settingsSnapshot.allowNegative === true) ||
         ((currentQuestion?.expectedNumber ?? 0) < 0)
+    );
+    const isQuotientRemainder = (currentQuestion?.answerKind === 'quotientRemainder');
+    const activeKeyboardTarget = (
+        isQuotientRemainder === true
+            ? (tileTarget === 'remainder' ? 'remainder' : 'quotient')
+            : 'answer'
     );
 
     useEffect(() => {
@@ -100,7 +108,7 @@ export function QuizPage () {
         setPhase('countdown');
         setCountdownValue(3);
         setCurrentIndex(0);
-        setInputValue('');
+        clearCurrentInputStates();
         setAnswers([]);
         setQuestionStartedAt(null);
         setPausedAt(null);
@@ -113,6 +121,7 @@ export function QuizPage () {
         setFeedbackEquationLeft('');
         setFeedbackEquationAnswer('');
         setFeedbackSubText('');
+        setValidationMessage('');
         setRemainingMsDisplay(
             currentQuiz.settingsSnapshot.timeLimitEnabled === true
                 ? (currentQuiz.settingsSnapshot.timeLimitSec * 1000)
@@ -122,6 +131,19 @@ export function QuizPage () {
             resolveInitialInteractiveInputMode(currentQuiz.settingsSnapshot.inputMethod)
         );
     }, [currentQuiz?.id]);
+
+    useEffect(() => {
+        if (currentQuestion == null) {
+            return;
+        }
+
+        if (currentQuestion.answerKind === 'quotientRemainder') {
+            setTileTarget('quotient');
+            return;
+        }
+
+        setTileTarget('answer');
+    }, [currentQuestion?.id, currentQuestion?.answerKind]);
 
     useEffect(() => {
         if (phase !== 'countdown') {
@@ -159,24 +181,81 @@ export function QuizPage () {
     }, [phase, countdownValue, currentQuiz]);
 
     useEffect(() => {
-        if ((phase !== 'active') || (pausedAt != null)) {
+        if ((phase !== 'active') || (paused === true)) {
             return;
         }
 
         if (activeInputMode !== 'keyboard') {
-            answerInputRef.current?.blur();
+            blurAllInputs();
             return;
         }
 
         const timerId = window.setTimeout(() => {
-            answerInputRef.current?.focus();
-            answerInputRef.current?.select();
+            focusKeyboardTarget(activeKeyboardTarget);
         }, 0);
 
         return () => {
             window.clearTimeout(timerId);
         };
-    }, [phase, currentIndex, pausedAt, activeInputMode]);
+    }, [phase, paused, activeInputMode, currentIndex, activeKeyboardTarget]);
+
+    useEffect(() => {
+        if ((phase !== 'active') && (phase !== 'countdown')) {
+            return;
+        }
+
+        const timerId = window.setTimeout(() => {
+            questionSectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, currentIndex]);
+
+    useEffect(() => {
+        if (
+            (phase !== 'active') ||
+            (currentQuiz == null) ||
+            (questionStartedAt == null) ||
+            (pausedAt != null)
+        ) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            const now = Date.now();
+            setNowTick(now);
+
+            if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
+                const elapsed = Math.max(0, (now - questionStartedAt - pausedMs));
+                const limitMs = (currentQuiz.settingsSnapshot.timeLimitSec * 1000);
+                const remainingMs = Math.max(0, (limitMs - elapsed));
+
+                setRemainingMsDisplay(remainingMs);
+
+                if (elapsed >= limitMs) {
+                    window.clearInterval(intervalId);
+                    handleSettleCurrentQuestion('timeout');
+                }
+            } else {
+                setRemainingMsDisplay(null);
+            }
+        }, 100);
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [
+        phase,
+        currentQuiz,
+        questionStartedAt,
+        pausedAt,
+        pausedMs,
+    ]);
 
     const goToNextQuestionOrFinish = useCallback((nextAnswers: AnswerResult[]) => {
         if (currentQuiz == null) {
@@ -219,6 +298,8 @@ export function QuizPage () {
         setFeedbackEquationLeft('');
         setFeedbackEquationAnswer('');
         setFeedbackSubText('');
+        setValidationMessage('');
+        clearCurrentInputStates();
 
         if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
             setRemainingMsDisplay(currentQuiz.settingsSnapshot.timeLimitSec * 1000);
@@ -233,9 +314,7 @@ export function QuizPage () {
         navigate,
     ]);
 
-    const handleSettleCurrentQuestion = useCallback((
-        mode: 'submit' | 'timeout'
-    ) => {
+    const handleSettleCurrentQuestion = useCallback((mode: 'submit' | 'timeout') => {
         if (
             (currentQuiz == null) ||
             (currentQuestion == null) ||
@@ -244,16 +323,37 @@ export function QuizPage () {
             return;
         }
 
+        if (mode === 'submit') {
+            const validation = validateCurrentInput(
+                currentQuestion.answerKind,
+                answerValue,
+                quotientValue,
+                remainderValue
+            );
+
+            if (validation.ok === false) {
+                setValidationMessage(validation.message);
+                return;
+            }
+        }
+
         const effectiveElapsedMs = (
             questionStartedAt == null
                 ? 0
                 : Math.max(0, ((Date.now()) - questionStartedAt - pausedMs))
         );
 
+        const userInput = buildUserInput(
+            currentQuestion.answerKind,
+            answerValue,
+            quotientValue,
+            remainderValue
+        );
+
         const compareResult = (
             mode === 'timeout'
                 ? { isCorrect: false, normalizedInput: '(時間切れ)' }
-                : compareAnswer(currentQuestion, inputValue)
+                : compareAnswer(currentQuestion, userInput)
         );
 
         const isCorrect = (
@@ -275,11 +375,7 @@ export function QuizPage () {
             userAnswer: (
                 mode === 'timeout'
                     ? '(時間切れ)'
-                    : (
-                        compareResult.normalizedInput.trim().length > 0
-                            ? compareResult.normalizedInput
-                            : '(未入力)'
-                    )
+                    : compareResult.normalizedInput
             ),
             correctAnswerText: currentQuestion.correctText,
             isCorrect,
@@ -297,7 +393,8 @@ export function QuizPage () {
 
         setAnswers(nextAnswers);
         setPhase('feedback');
-        setInputValue('');
+        setValidationMessage('');
+        clearCurrentInputStates();
 
         let delayMs: number = FEEDBACK_DELAY_MS.wrong;
 
@@ -343,52 +440,41 @@ export function QuizPage () {
         phase,
         questionStartedAt,
         pausedMs,
-        inputValue,
+        answerValue,
+        quotientValue,
+        remainderValue,
         answers,
         goToNextQuestionOrFinish,
     ]);
 
-    useEffect(() => {
-        if (
-            (phase !== 'active') ||
-            (currentQuiz == null) ||
-            (questionStartedAt == null) ||
-            (pausedAt != null)
-        ) {
+    function clearCurrentInputStates (): void {
+        setAnswerValue('');
+        setQuotientValue('');
+        setRemainderValue('');
+    }
+
+    function blurAllInputs (): void {
+        answerInputRef.current?.blur();
+        quotientInputRef.current?.blur();
+        remainderInputRef.current?.blur();
+    }
+
+    function focusKeyboardTarget (target: TileTargetType): void {
+        if (target === 'quotient') {
+            quotientInputRef.current?.focus();
+            quotientInputRef.current?.select();
             return;
         }
 
-        const intervalId = window.setInterval(() => {
-            const now = Date.now();
-            setNowTick(now);
+        if (target === 'remainder') {
+            remainderInputRef.current?.focus();
+            remainderInputRef.current?.select();
+            return;
+        }
 
-            if (currentQuiz.settingsSnapshot.timeLimitEnabled === true) {
-                const elapsed = Math.max(0, (now - questionStartedAt - pausedMs));
-                const limitMs = (currentQuiz.settingsSnapshot.timeLimitSec * 1000);
-                const remainingMs = Math.max(0, (limitMs - elapsed));
-
-                setRemainingMsDisplay(remainingMs);
-
-                if (elapsed >= limitMs) {
-                    window.clearInterval(intervalId);
-                    handleSettleCurrentQuestion('timeout');
-                }
-            } else {
-                setRemainingMsDisplay(null);
-            }
-        }, 100);
-
-        return () => {
-            window.clearInterval(intervalId);
-        };
-    }, [
-        phase,
-        currentQuiz,
-        questionStartedAt,
-        pausedAt,
-        pausedMs,
-        handleSettleCurrentQuestion,
-    ]);
+        answerInputRef.current?.focus();
+        answerInputRef.current?.select();
+    }
 
     function handlePauseToggle (): void {
         if (phase !== 'active') {
@@ -431,6 +517,7 @@ export function QuizPage () {
             setFeedbackEquationLeft('');
             setFeedbackEquationAnswer('');
             setFeedbackSubText('');
+            setValidationMessage('');
         }
     }
 
@@ -481,32 +568,72 @@ export function QuizPage () {
         }
     }
 
-    function switchToKeyboardMode (): void {
+    function handleQuotientKeyDown (event: React.KeyboardEvent<HTMLInputElement>): void {
+        if (event.key !== 'Enter') {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (isQuotientRemainder === true) {
+            setTileTarget('remainder');
+            remainderInputRef.current?.focus();
+            remainderInputRef.current?.select();
+        }
+    }
+
+    function switchToKeyboardMode (target?: TileTargetType): void {
         if ((phase !== 'active') || (paused === true)) {
             return;
+        }
+
+        if (target != null) {
+            setTileTarget(target);
         }
 
         setActiveInputMode('keyboard');
 
         window.setTimeout(() => {
-            answerInputRef.current?.focus();
-            answerInputRef.current?.select();
+            focusKeyboardTarget(target ?? activeKeyboardTarget);
         }, 0);
     }
 
-    function switchToTileMode (): void {
+    function switchToTileMode (target?: TileTargetType): void {
+        if ((phase !== 'active') || (paused === true)) {
+            return;
+        }
+
+        if (target != null) {
+            setTileTarget(target);
+        }
+
         setActiveInputMode('tile');
-        answerInputRef.current?.blur();
+        blurAllInputs();
     }
 
-    function appendInputValue (text: string): void {
+    function appendTileValue (text: string): void {
         if ((phase !== 'active') || (paused === true)) {
             return;
         }
 
         switchToTileMode();
+        setValidationMessage('');
 
-        setInputValue((prev) => {
+        if (isQuotientRemainder === true) {
+            if (tileTarget === 'remainder') {
+                setRemainderValue((prev) => {
+                    return (prev + text);
+                });
+                return;
+            }
+
+            setQuotientValue((prev) => {
+                return (prev + text);
+            });
+            return;
+        }
+
+        setAnswerValue((prev) => {
             return (prev + text);
         });
     }
@@ -517,8 +644,23 @@ export function QuizPage () {
         }
 
         switchToTileMode();
+        setValidationMessage('');
 
-        setInputValue((prev) => {
+        if (isQuotientRemainder === true) {
+            if (tileTarget === 'remainder') {
+                setRemainderValue((prev) => {
+                    return prev.slice(0, -1);
+                });
+                return;
+            }
+
+            setQuotientValue((prev) => {
+                return prev.slice(0, -1);
+            });
+            return;
+        }
+
+        setAnswerValue((prev) => {
             return prev.slice(0, -1);
         });
     }
@@ -529,15 +671,50 @@ export function QuizPage () {
         }
 
         switchToTileMode();
-        setInputValue('');
+        clearCurrentInputStates();
+        setValidationMessage('');
     }
 
-    function handleTileSubmit (): void {
+    function appendMinus (): void {
         if ((phase !== 'active') || (paused === true)) {
             return;
         }
 
-        handleSettleCurrentQuestion('submit');
+        switchToTileMode();
+        setValidationMessage('');
+
+        if (isQuotientRemainder === true) {
+            if (tileTarget === 'remainder') {
+                if (remainderValue.length <= 0) {
+                    setRemainderValue('-');
+                }
+                return;
+            }
+
+            if (quotientValue.length <= 0) {
+                setQuotientValue('-');
+            }
+            return;
+        }
+
+        if (answerValue.length <= 0) {
+            setAnswerValue('-');
+        }
+    }
+
+    function appendDecimal (): void {
+        if ((phase !== 'active') || (paused === true) || (isQuotientRemainder === true)) {
+            return;
+        }
+
+        switchToTileMode();
+        setValidationMessage('');
+
+        if (answerValue.includes('.') === false) {
+            setAnswerValue((prev) => {
+                return `${prev}.`;
+            });
+        }
     }
 
     if ((currentQuiz == null) || (currentQuestion == null)) {
@@ -607,93 +784,83 @@ export function QuizPage () {
             </header>
 
             {phase === 'countdown' && (
-                <section className="card">
+                <section className="card" ref={questionSectionRef}>
                     <h2>カウントダウン</h2>
                     <div className="big-display">{countdownValue}</div>
                 </section>
             )}
 
             {phase !== 'countdown' && (
-                <>
-                    <section className="card">
-                        <div className="status-row">
-                            <div>
-                                <strong>経過時間:</strong> {Math.ceil(elapsedMs / 100) / 10} 秒
-                            </div>
-
-                            {remainingMsDisplay != null && (
-                                <div className="timer-badge">
-                                    残り: {Math.ceil(remainingMsDisplay / 100) / 10} 秒
-                                </div>
-                            )}
+                <section className="card" ref={questionSectionRef}>
+                    <div className="status-row">
+                        <div>
+                            <strong>経過時間:</strong> {formatSecondsFromMs(elapsedMs)} 秒
                         </div>
 
-                        <div className="mode-row">
-                            <div className="mode-badge">
-                                現在の入力方式: {activeInputMode === 'keyboard' ? 'キーボード' : '数字タイル'}
+                        {remainingMsDisplay != null && (
+                            <div className="timer-badge">
+                                残り: {formatSecondsFromMs(remainingMsDisplay)} 秒
                             </div>
-
-                            <div className="segmented-row">
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToKeyboardMode();
-                                    }}
-                                >
-                                    キーボード入力
-                                </button>
-
-                                <button
-                                    type="button"
-                                    className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
-                                    onClick={() => {
-                                        switchToTileMode();
-                                    }}
-                                >
-                                    数字タイル入力
-                                </button>
-                            </div>
-                        </div>
-
-                        <h2>問題</h2>
-                        <div className="question-box">{currentQuestion.expression}</div>
-
-                        {currentQuestion.inputHint != null && (
-                            <p className="sub-text">{currentQuestion.inputHint}</p>
                         )}
+                    </div>
 
-                        <form onSubmit={handleSubmit}>
+                    <div className="inline-input-mode-row top-gap">
+                        <strong>入力方式</strong>
+                        <div className="segmented-row">
+                            <button
+                                type="button"
+                                className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
+                                onClick={() => {
+                                    switchToKeyboardMode();
+                                }}
+                            >
+                                キーボード
+                            </button>
+
+                            <button
+                                type="button"
+                                className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
+                                onClick={() => {
+                                    switchToTileMode();
+                                }}
+                            >
+                                数字タイル
+                            </button>
+                        </div>
+                    </div>
+
+                    <h2 className="top-gap">問題</h2>
+                    <div className="question-box">{currentQuestion.expression}</div>
+
+                    {currentQuestion.inputHint != null && (
+                        <p className="sub-text">{currentQuestion.inputHint}</p>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="answer-layout top-gap">
+                        {currentQuestion.answerKind === 'number' && (
                             <label>
                                 回答入力
                                 <input
                                     ref={answerInputRef}
                                     className="input-control"
                                     type="text"
-                                    value={inputValue}
+                                    value={answerValue}
                                     disabled={(phase !== 'active') || (paused === true)}
                                     placeholder="ここに答えを入力"
                                     inputMode={
-                                        currentQuestion.answerKind === 'quotientRemainder'
-                                            ? 'text'
-                                            : (
-                                                currentQuestion.course === 'div' &&
-                                                currentQuestion.inputHint?.includes('小数') === true
-                                                    ? 'decimal'
-                                                    : 'numeric'
-                                            )
+                                        currentQuestion.course === 'div' &&
+                                        currentQuestion.inputHint?.includes('小数') === true
+                                            ? 'decimal'
+                                            : 'numeric'
                                     }
                                     enterKeyHint="done"
                                     autoComplete="off"
                                     autoCapitalize="off"
                                     spellCheck={false}
                                     lang="en"
-                                    pattern={
-                                        currentQuestion.answerKind === 'quotientRemainder'
-                                            ? '[0-9\\- ]*'
-                                            : '[0-9\\-\\.]*'
-                                    }
+                                    pattern="[0-9\-\.]*"
                                     onFocus={() => {
+                                        setTileTarget('answer');
                                         setActiveInputMode('keyboard');
                                     }}
                                     onCompositionStart={() => {
@@ -704,11 +871,68 @@ export function QuizPage () {
                                     }}
                                     onKeyDown={handleInputKeyDown}
                                     onChange={(event) => {
-                                        setInputValue(event.target.value);
+                                        setAnswerValue(event.target.value);
+                                        setValidationMessage('');
                                     }}
                                 />
                             </label>
+                        )}
 
+                        {currentQuestion.answerKind === 'quotientRemainder' && (
+                            <div className="dual-answer-grid">
+                                <label>
+                                    商
+                                    <input
+                                        ref={quotientInputRef}
+                                        className="input-control"
+                                        type="text"
+                                        value={quotientValue}
+                                        disabled={(phase !== 'active') || (paused === true)}
+                                        placeholder="商"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        onFocus={() => {
+                                            setTileTarget('quotient');
+                                            setActiveInputMode('keyboard');
+                                        }}
+                                        onKeyDown={handleQuotientKeyDown}
+                                        onChange={(event) => {
+                                            setQuotientValue(event.target.value);
+                                            setValidationMessage('');
+                                        }}
+                                    />
+                                </label>
+
+                                <label>
+                                    余り
+                                    <input
+                                        ref={remainderInputRef}
+                                        className="input-control"
+                                        type="text"
+                                        value={remainderValue}
+                                        disabled={(phase !== 'active') || (paused === true)}
+                                        placeholder="余り"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        onFocus={() => {
+                                            setTileTarget('remainder');
+                                            setActiveInputMode('keyboard');
+                                        }}
+                                        onKeyDown={handleInputKeyDown}
+                                        onChange={(event) => {
+                                            setRemainderValue(event.target.value);
+                                            setValidationMessage('');
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        )}
+
+                        {(validationMessage.length > 0) && (
+                            <div className="input-error-text">{validationMessage}</div>
+                        )}
+
+                        {(activeInputMode === 'keyboard') && (
                             <div className="button-row top-gap">
                                 <button
                                     type="submit"
@@ -718,46 +942,67 @@ export function QuizPage () {
                                     回答する
                                 </button>
                             </div>
-                        </form>
-                    </section>
+                        )}
+                    </form>
 
-                    <section className="card">
-                        <h2>数字タイル入力</h2>
+                    {(activeInputMode === 'tile') && (
+                        <div className="top-gap">
+                            {isQuotientRemainder === true && (
+                                <div className="tile-target-row bottom-gap">
+                                    <span className="sub-text">入力先</span>
+                                    <div className="segmented-row">
+                                        <button
+                                            type="button"
+                                            className={`segmented-button ${tileTarget === 'quotient' ? 'is-selected' : ''}`}
+                                            onClick={() => {
+                                                switchToTileMode('quotient');
+                                            }}
+                                        >
+                                            商
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`segmented-button ${tileTarget === 'remainder' ? 'is-selected' : ''}`}
+                                            onClick={() => {
+                                                switchToTileMode('remainder');
+                                            }}
+                                        >
+                                            余り
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
-                        <div className="keypad-grid">
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('7'); }}>7</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('8'); }}>8</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('9'); }}>9</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { backspaceInputValue(); }}>←</button>
+                            <div className="keypad-grid">
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('7'); }}>7</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('8'); }}>8</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('9'); }}>9</button>
+                                <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { backspaceInputValue(); }}>←</button>
 
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('4'); }}>4</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('5'); }}>5</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('6'); }}>6</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { clearInputValue(); }}>C</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('4'); }}>4</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('5'); }}>5</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('6'); }}>6</button>
+                                <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused} onClick={() => { clearInputValue(); }}>C</button>
 
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('1'); }}>1</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('2'); }}>2</button>
-                            <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('3'); }}>3</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (minusKeyEnabled === false)} onClick={() => { appendInputValue('-'); }}>-</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('1'); }}>1</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('2'); }}>2</button>
+                                <button type="button" className="keypad-button" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('3'); }}>3</button>
+                                <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (minusKeyEnabled === false)} onClick={() => { appendMinus(); }}>-</button>
 
-                            <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || paused} onClick={() => { appendInputValue('0'); }}>0</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (decimalKeyEnabled === false)} onClick={() => { appendInputValue('.'); }}>.</button>
-                            <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (spaceKeyEnabled === false)} onClick={() => { appendInputValue(' '); }}>空白</button>
-                            <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || paused} onClick={() => { handleTileSubmit(); }}>回答</button>
+                                <button type="button" className="keypad-button keypad-button-wide" disabled={(phase !== 'active') || paused} onClick={() => { appendTileValue('0'); }}>0</button>
+                                <button type="button" className="keypad-button keypad-button-sub" disabled={(phase !== 'active') || paused || (decimalKeyEnabled === false) || (isQuotientRemainder === true)} onClick={() => { appendDecimal(); }}>.</button>
+                                <button type="button" className="keypad-button keypad-button-primary" disabled={(phase !== 'active') || paused} onClick={() => { handleSettleCurrentQuestion('submit'); }}>回答</button>
+                            </div>
                         </div>
-
-                        <p className="sub-text">
-                            数字タイルを押すと、スマホではキーボードを閉じる挙動になります。
-                        </p>
-                    </section>
+                    )}
 
                     {paused === true && (
-                        <section className="card paused-box">
+                        <section className="card paused-box top-gap">
                             <strong>一時停止中</strong>
                             <p className="sub-text">「再開」を押すと続きから再開します。</p>
                         </section>
                     )}
-                </>
+                </section>
             )}
 
             {feedbackKind != null && (
@@ -781,6 +1026,66 @@ export function QuizPage () {
             )}
         </div>
     );
+}
+
+function validateCurrentInput (
+    answerKind: 'number' | 'quotientRemainder',
+    answerValue: string,
+    quotientValue: string,
+    remainderValue: string
+): { ok: boolean; message: string } {
+    if (answerKind === 'quotientRemainder') {
+        if ((quotientValue.trim().length <= 0) && (remainderValue.trim().length <= 0)) {
+            return {
+                ok: false,
+                message: '商と余りを入力してください。',
+            };
+        }
+
+        if (quotientValue.trim().length <= 0) {
+            return {
+                ok: false,
+                message: '商を入力してください。',
+            };
+        }
+
+        if (remainderValue.trim().length <= 0) {
+            return {
+                ok: false,
+                message: '余りを入力してください。',
+            };
+        }
+
+        return {
+            ok: true,
+            message: '',
+        };
+    }
+
+    if (answerValue.trim().length <= 0) {
+        return {
+            ok: false,
+            message: '答えを入力してください。',
+        };
+    }
+
+    return {
+        ok: true,
+        message: '',
+    };
+}
+
+function buildUserInput (
+    answerKind: 'number' | 'quotientRemainder',
+    answerValue: string,
+    quotientValue: string,
+    remainderValue: string
+): string {
+    if (answerKind === 'quotientRemainder') {
+        return `${quotientValue.trim()} ${remainderValue.trim()}`.trim();
+    }
+
+    return answerValue.trim();
 }
 
 function resolveInitialInteractiveInputMode (
@@ -821,4 +1126,8 @@ function buildFeedbackEquation (
         leftText: normalizedLeft,
         answerText: correctText,
     };
+}
+
+function formatSecondsFromMs (ms: number): string {
+    return Math.max(0, (ms / 1000)).toFixed(1);
 }

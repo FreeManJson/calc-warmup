@@ -4,8 +4,15 @@ import { ADVENTURE_FEEDBACK_DELAY_MS } from '../constants/adventureConstants';
 import { useAppContext } from '../context/AppContext';
 import type { AdventureFeedbackState, AdventureStageKey } from '../types/adventureTypes';
 import type { InputMethodType } from '../types/appTypes';
-import { getCurrentAdventureEnemy, getStageLabel, resolveAdventureAnswer, tickAdventureSession } from '../utils/adventureUtils';
+import {
+    getCurrentAdventureEnemy,
+    getStageLabel,
+    resolveAdventureAnswer,
+    tickAdventureSession,
+} from '../utils/adventureUtils';
 import { compareAnswer } from '../utils/quizUtils';
+
+type TileTargetType = 'answer' | 'quotient' | 'remainder';
 
 export function AdventureRunPage () {
     const navigate = useNavigate();
@@ -24,9 +31,13 @@ export function AdventureRunPage () {
     const [activeInputMode, setActiveInputMode] = useState<'keyboard' | 'tile'>(() => {
         return 'keyboard';
     });
-    const [tileTarget, setTileTarget] = useState<'quotient' | 'remainder'>('quotient');
+    const [tileTarget, setTileTarget] = useState<TileTargetType>('answer');
+    const [validationMessage, setValidationMessage] = useState<string>('');
     const tickTimestampRef = useRef<number | null>(null);
     const answerInputRef = useRef<HTMLInputElement | null>(null);
+    const quotientInputRef = useRef<HTMLInputElement | null>(null);
+    const remainderInputRef = useRef<HTMLInputElement | null>(null);
+    const questionCardRef = useRef<HTMLElement | null>(null);
 
     const currentQuestion = currentAdventure?.currentQuestion ?? null;
     const currentEnemy = useMemo(() => {
@@ -37,6 +48,9 @@ export function AdventureRunPage () {
         return getCurrentAdventureEnemy(currentAdventure.enemyStates);
     }, [currentAdventure]);
 
+    const isQuotientRemainder = (currentQuestion?.answerKind === 'quotientRemainder');
+    const decimalKeyEnabled = (currentQuestion?.answerKind === 'number');
+
     useEffect(() => {
         if (currentAdventure == null) {
             navigate('/adventure');
@@ -45,6 +59,19 @@ export function AdventureRunPage () {
 
         setActiveInputMode(resolveInitialInteractiveInputMode(currentAdventure.settingsSnapshot.inputMethod));
     }, [currentAdventure?.id, navigate]);
+
+    useEffect(() => {
+        if (currentQuestion == null) {
+            return;
+        }
+
+        if (currentQuestion.answerKind === 'quotientRemainder') {
+            setTileTarget('quotient');
+            return;
+        }
+
+        setTileTarget('answer');
+    }, [currentQuestion?.id, currentQuestion?.answerKind]);
 
     useEffect(() => {
         if ((currentAdventure == null) || (feedback != null)) {
@@ -124,32 +151,84 @@ export function AdventureRunPage () {
     }, [feedback, feedbackToken, finishAdventure, navigate, pendingResult]);
 
     useEffect(() => {
-        if (activeInputMode !== 'keyboard') {
-            answerInputRef.current?.blur();
+        if ((feedback != null) || (currentQuestion == null)) {
             return;
         }
 
-        if ((feedback == null) && (currentQuestion?.answerKind === 'number')) {
-            answerInputRef.current?.focus();
+        const timerId = window.setTimeout(() => {
+            questionCardRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+            });
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [currentQuestion?.id, feedback]);
+
+    useEffect(() => {
+        if ((feedback != null) || (activeInputMode !== 'keyboard')) {
+            blurAllInputs();
+            return;
         }
-    }, [currentQuestion, feedback, activeInputMode]);
+
+        const timerId = window.setTimeout(() => {
+            if (isQuotientRemainder === true) {
+                if (tileTarget === 'remainder') {
+                    remainderInputRef.current?.focus();
+                    remainderInputRef.current?.select();
+                    return;
+                }
+
+                quotientInputRef.current?.focus();
+                quotientInputRef.current?.select();
+                return;
+            }
+
+            answerInputRef.current?.focus();
+            answerInputRef.current?.select();
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [feedback, activeInputMode, isQuotientRemainder, tileTarget, currentQuestion?.id]);
 
     if (currentAdventure == null) {
         return null;
     }
 
+    function clearInputs (): void {
+        setAnswerValue('');
+        setQuotientValue('');
+        setRemainderValue('');
+    }
+
+    function blurAllInputs (): void {
+        answerInputRef.current?.blur();
+        quotientInputRef.current?.blur();
+        remainderInputRef.current?.blur();
+    }
+
     function handleSubmitAnswer (): void {
-        if (feedback != null) {
+        if ((feedback != null) || (currentQuestion == null)) {
+            return;
+        }
+
+        const validation = validateAdventureInput(
+            currentQuestion.answerKind,
+            answerValue,
+            quotientValue,
+            remainderValue
+        );
+
+        if (validation.ok === false) {
+            setValidationMessage(validation.message);
             return;
         }
 
         const composedInput = buildUserInput(currentQuestion.answerKind, answerValue, quotientValue, remainderValue);
-        const trimmedInput = composedInput.trim();
-
-        if (trimmedInput.length <= 0) {
-            return;
-        }
-
         const compared = compareAnswer(currentQuestion, composedInput);
         const resolved = resolveAdventureAnswer(currentAdventure, {
             isCorrect: compared.isCorrect,
@@ -163,6 +242,7 @@ export function AdventureRunPage () {
         setFeedbackToken((prevToken) => {
             return (prevToken + 1);
         });
+        setValidationMessage('');
         clearInputs();
     }
 
@@ -177,11 +257,29 @@ export function AdventureRunPage () {
         navigate('/adventure');
     }
 
-    function clearInputs (): void {
-        setAnswerValue('');
-        setQuotientValue('');
-        setRemainderValue('');
-        setTileTarget('quotient');
+    function switchToKeyboardMode (target?: TileTargetType): void {
+        if (feedback != null) {
+            return;
+        }
+
+        if (target != null) {
+            setTileTarget(target);
+        }
+
+        setActiveInputMode('keyboard');
+    }
+
+    function switchToTileMode (target?: TileTargetType): void {
+        if (feedback != null) {
+            return;
+        }
+
+        if (target != null) {
+            setTileTarget(target);
+        }
+
+        setActiveInputMode('tile');
+        blurAllInputs();
     }
 
     function appendTileValue (value: string): void {
@@ -189,7 +287,10 @@ export function AdventureRunPage () {
             return;
         }
 
-        if (currentQuestion?.answerKind === 'quotientRemainder') {
+        switchToTileMode();
+        setValidationMessage('');
+
+        if (isQuotientRemainder === true) {
             if (tileTarget === 'remainder') {
                 setRemainderValue((prev) => {
                     return `${prev}${value}`;
@@ -209,7 +310,14 @@ export function AdventureRunPage () {
     }
 
     function backspaceTileValue (): void {
-        if (currentQuestion?.answerKind === 'quotientRemainder') {
+        if (feedback != null) {
+            return;
+        }
+
+        switchToTileMode();
+        setValidationMessage('');
+
+        if (isQuotientRemainder === true) {
             if (tileTarget === 'remainder') {
                 setRemainderValue((prev) => {
                     return prev.slice(0, -1);
@@ -229,7 +337,14 @@ export function AdventureRunPage () {
     }
 
     function appendMinus (): void {
-        if (currentQuestion?.answerKind === 'quotientRemainder') {
+        if (feedback != null) {
+            return;
+        }
+
+        switchToTileMode();
+        setValidationMessage('');
+
+        if (isQuotientRemainder === true) {
             if (tileTarget === 'remainder') {
                 if (remainderValue.length <= 0) {
                     setRemainderValue('-');
@@ -249,15 +364,28 @@ export function AdventureRunPage () {
     }
 
     function appendDecimal (): void {
-        if (currentQuestion.answerKind !== 'number') {
+        if ((feedback != null) || (isQuotientRemainder === true)) {
             return;
         }
+
+        switchToTileMode();
+        setValidationMessage('');
 
         if (answerValue.includes('.') === false) {
             setAnswerValue((prev) => {
                 return `${prev}.`;
             });
         }
+    }
+
+    function handleClearInputs (): void {
+        if (feedback != null) {
+            return;
+        }
+
+        clearInputs();
+        setValidationMessage('');
+        switchToTileMode();
     }
 
     const stageEntries = Object.values(currentAdventure.enemyStates).filter((enemyState) => {
@@ -303,7 +431,7 @@ export function AdventureRunPage () {
                             handleRetreat();
                         }}
                     >
-                        この冒険を破棄
+                        冒険を中断
                     </button>
                 </div>
             </section>
@@ -313,124 +441,206 @@ export function AdventureRunPage () {
 
                 <div className="adventure-stage-track top-gap">
                     {stageEntries.map((enemyState) => {
-                        const stageStateClassName = buildStageStateClassName(
-                            enemyState.stageKey,
-                            currentEnemy?.stageKey ?? null,
-                            enemyState.defeated
-                        );
-
                         return (
-                            <article key={enemyState.stageKey} className={`adventure-stage-chip ${stageStateClassName}`}>
-                                <div className="adventure-stage-chip-label">{getStageLabel(enemyState.stageKey as AdventureStageKey)}</div>
+                            <div
+                                key={enemyState.stageKey}
+                                className={`adventure-stage-chip ${buildStageStateClassName(
+                                    enemyState.stageKey,
+                                    currentEnemy?.stageKey ?? null,
+                                    enemyState.defeated
+                                )}`}
+                            >
+                                <div className="adventure-stage-chip-label">{getStageLabel(enemyState.stageKey)}</div>
                                 <div className="adventure-stage-chip-name">{enemyState.enemyName}</div>
-                                <div className="sub-text">HP {enemyState.remainingHp} / {enemyState.maxHp}</div>
-                            </article>
+                                <div className="sub-text">
+                                    {enemyState.defeated === true
+                                        ? '撃破済み'
+                                        : `${enemyState.remainingHp} / ${enemyState.maxHp} HP`}
+                                </div>
+                            </div>
                         );
                     })}
                 </div>
             </section>
 
-            <section className="card">
-                <h2>問題</h2>
+            <section className="card" ref={questionCardRef}>
+                <div className="inline-input-mode-row">
+                    <strong>入力方式</strong>
+                    <div className="segmented-row">
+                        <button
+                            type="button"
+                            className={`segmented-button ${activeInputMode === 'keyboard' ? 'is-selected' : ''}`}
+                            onClick={() => {
+                                switchToKeyboardMode();
+                            }}
+                        >
+                            キーボード
+                        </button>
+                        <button
+                            type="button"
+                            className={`segmented-button ${activeInputMode === 'tile' ? 'is-selected' : ''}`}
+                            onClick={() => {
+                                switchToTileMode();
+                            }}
+                        >
+                            数字タイル
+                        </button>
+                    </div>
+                </div>
 
                 {currentQuestion != null && (
                     <>
+                        <h2 className="top-gap">問題</h2>
                         <div className="question-box">{currentQuestion.expression}</div>
 
-                        {currentQuestion.answerKind === 'number' && (
-                    <label>
-                        回答入力
-                        <input
-                            ref={answerInputRef}
-                            className="input-control"
-                            type="text"
-                            value={answerValue}
-                            disabled={feedback != null}
-                            placeholder="ここに答えを入力"
-                            inputMode="decimal"
-                            onFocus={() => {
-                                setActiveInputMode('keyboard');
-                            }}
-                            onChange={(event) => {
-                                setAnswerValue(event.target.value);
-                            }}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    handleSubmitAnswer();
-                                }
-                            }}
-                        />
-                    </label>
-                )}
+                        {currentQuestion.inputHint != null && (
+                            <p className="sub-text">{currentQuestion.inputHint}</p>
+                        )}
 
-                        {currentQuestion.answerKind === 'quotientRemainder' && (
-                    <div className="form-grid">
-                        <label>
-                            商
-                            <input
-                                className="input-control"
-                                type="text"
-                                value={quotientValue}
-                                disabled={feedback != null}
-                                placeholder="商"
-                                inputMode="numeric"
-                                onFocus={() => {
-                                    setActiveInputMode('keyboard');
-                                }}
-                                onChange={(event) => {
-                                    setQuotientValue(event.target.value);
-                                }}
-                            />
-                        </label>
+                        <div className="answer-layout top-gap">
+                            {currentQuestion.answerKind === 'number' && (
+                                <label>
+                                    回答入力
+                                    <input
+                                        ref={answerInputRef}
+                                        className="input-control"
+                                        type="text"
+                                        value={answerValue}
+                                        disabled={feedback != null}
+                                        placeholder="ここに答えを入力"
+                                        inputMode="decimal"
+                                        onFocus={() => {
+                                            setTileTarget('answer');
+                                            setActiveInputMode('keyboard');
+                                        }}
+                                        onChange={(event) => {
+                                            setAnswerValue(event.target.value);
+                                            setValidationMessage('');
+                                        }}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                event.preventDefault();
+                                                handleSubmitAnswer();
+                                            }
+                                        }}
+                                    />
+                                </label>
+                            )}
 
-                        <label>
-                            余り
-                            <input
-                                className="input-control"
-                                type="text"
-                                value={remainderValue}
-                                disabled={feedback != null}
-                                placeholder="余り"
-                                inputMode="numeric"
-                                onFocus={() => {
-                                    setActiveInputMode('keyboard');
-                                }}
-                                onChange={(event) => {
-                                    setRemainderValue(event.target.value);
-                                }}
-                                onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                        event.preventDefault();
-                                        handleSubmitAnswer();
-                                    }
-                                }}
-                            />
-                        </label>
-                    </div>
-                )}
+                            {currentQuestion.answerKind === 'quotientRemainder' && (
+                                <div className="dual-answer-grid">
+                                    <label>
+                                        商
+                                        <input
+                                            ref={quotientInputRef}
+                                            className="input-control"
+                                            type="text"
+                                            value={quotientValue}
+                                            disabled={feedback != null}
+                                            placeholder="商"
+                                            inputMode="numeric"
+                                            onFocus={() => {
+                                                setTileTarget('quotient');
+                                                setActiveInputMode('keyboard');
+                                            }}
+                                            onChange={(event) => {
+                                                setQuotientValue(event.target.value);
+                                                setValidationMessage('');
+                                            }}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault();
+                                                    setTileTarget('remainder');
+                                                    remainderInputRef.current?.focus();
+                                                    remainderInputRef.current?.select();
+                                                }
+                                            }}
+                                        />
+                                    </label>
 
-                        <div className="button-row top-gap">
-                            <button
-                                type="button"
-                                className="primary-button"
-                                onClick={() => {
-                                    handleSubmitAnswer();
-                                }}
-                                disabled={feedback != null}
-                            >
-                                攻撃する
-                            </button>
+                                    <label>
+                                        余り
+                                        <input
+                                            ref={remainderInputRef}
+                                            className="input-control"
+                                            type="text"
+                                            value={remainderValue}
+                                            disabled={feedback != null}
+                                            placeholder="余り"
+                                            inputMode="numeric"
+                                            onFocus={() => {
+                                                setTileTarget('remainder');
+                                                setActiveInputMode('keyboard');
+                                            }}
+                                            onChange={(event) => {
+                                                setRemainderValue(event.target.value);
+                                                setValidationMessage('');
+                                            }}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault();
+                                                    handleSubmitAnswer();
+                                                }
+                                            }}
+                                        />
+                                    </label>
+                                </div>
+                            )}
 
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setActiveInputMode(activeInputMode === 'keyboard' ? 'tile' : 'keyboard');
-                                }}
-                            >
-                                {activeInputMode === 'keyboard' ? '数字タイルを表示' : 'キーボード入力に戻す'}
-                            </button>
+                            {(validationMessage.length > 0) && (
+                                <div className="input-error-text">{validationMessage}</div>
+                            )}
+
+                            {(activeInputMode === 'keyboard') && (
+                                <div className="button-row top-gap">
+                                    <button
+                                        type="button"
+                                        className="primary-button"
+                                        onClick={() => {
+                                            handleSubmitAnswer();
+                                        }}
+                                        disabled={feedback != null}
+                                    >
+                                        攻撃する
+                                    </button>
+                                </div>
+                            )}
                         </div>
+
+                        {(activeInputMode === 'tile') && (
+                            <div className="top-gap">
+                                {isQuotientRemainder === true && (
+                                    <div className="tile-target-row bottom-gap">
+                                        <span className="sub-text">入力先</span>
+                                        <div className="segmented-row">
+                                            <button type="button" className={`segmented-button ${tileTarget === 'quotient' ? 'is-selected' : ''}`} onClick={() => { switchToTileMode('quotient'); }}>商</button>
+                                            <button type="button" className={`segmented-button ${tileTarget === 'remainder' ? 'is-selected' : ''}`} onClick={() => { switchToTileMode('remainder'); }}>余り</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="keypad-grid">
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('7'); }}>7</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('8'); }}>8</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('9'); }}>9</button>
+                                    <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { backspaceTileValue(); }}>←</button>
+
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('4'); }}>4</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('5'); }}>5</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('6'); }}>6</button>
+                                    <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { handleClearInputs(); }}>C</button>
+
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('1'); }}>1</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('2'); }}>2</button>
+                                    <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('3'); }}>3</button>
+                                    <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { appendMinus(); }}>-</button>
+
+                                    <button type="button" className="keypad-button keypad-button-wide" disabled={feedback != null} onClick={() => { appendTileValue('0'); }}>0</button>
+                                    <button type="button" className="keypad-button keypad-button-sub" disabled={(feedback != null) || (decimalKeyEnabled === false) || (isQuotientRemainder === true)} onClick={() => { appendDecimal(); }}>.</button>
+                                    <button type="button" className="keypad-button keypad-button-primary" disabled={feedback != null} onClick={() => { handleSubmitAnswer(); }}>攻撃</button>
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
 
@@ -438,40 +648,6 @@ export function AdventureRunPage () {
                     <div className="sub-text">冒険結果を集計中です...</div>
                 )}
             </section>
-
-            {(activeInputMode === 'tile') && (currentQuestion != null) && (
-                <section className="card">
-                    <h2>数字タイル入力</h2>
-
-                    {currentQuestion.answerKind === 'quotientRemainder' && (
-                        <div className="button-row bottom-gap">
-                            <button type="button" className={`segmented-button ${tileTarget === 'quotient' ? 'is-selected' : ''}`} onClick={() => { setTileTarget('quotient'); }}>商へ入力</button>
-                            <button type="button" className={`segmented-button ${tileTarget === 'remainder' ? 'is-selected' : ''}`} onClick={() => { setTileTarget('remainder'); }}>余りへ入力</button>
-                        </div>
-                    )}
-
-                    <div className="keypad-grid">
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('7'); }}>7</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('8'); }}>8</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('9'); }}>9</button>
-                        <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { backspaceTileValue(); }}>←</button>
-
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('4'); }}>4</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('5'); }}>5</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('6'); }}>6</button>
-                        <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { clearInputs(); }}>C</button>
-
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('1'); }}>1</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('2'); }}>2</button>
-                        <button type="button" className="keypad-button" disabled={feedback != null} onClick={() => { appendTileValue('3'); }}>3</button>
-                        <button type="button" className="keypad-button keypad-button-sub" disabled={feedback != null} onClick={() => { appendMinus(); }}>-</button>
-
-                        <button type="button" className="keypad-button keypad-button-wide" disabled={feedback != null} onClick={() => { appendTileValue('0'); }}>0</button>
-                        <button type="button" className="keypad-button keypad-button-sub" disabled={(feedback != null) || (currentQuestion.answerKind !== 'number')} onClick={() => { appendDecimal(); }}>.</button>
-                        <button type="button" className="keypad-button keypad-button-primary" disabled={feedback != null} onClick={() => { handleSubmitAnswer(); }}>攻撃</button>
-                    </div>
-                </section>
-            )}
 
             {feedback != null && (
                 <div className={`feedback-overlay ${buildFeedbackClassName(feedback.kind)}`}>
@@ -490,6 +666,53 @@ export function AdventureRunPage () {
     );
 }
 
+function validateAdventureInput (
+    answerKind: 'number' | 'quotientRemainder',
+    answerValue: string,
+    quotientValue: string,
+    remainderValue: string
+): { ok: boolean; message: string } {
+    if (answerKind === 'quotientRemainder') {
+        if ((quotientValue.trim().length <= 0) && (remainderValue.trim().length <= 0)) {
+            return {
+                ok: false,
+                message: '商と余りを入力してください。',
+            };
+        }
+
+        if (quotientValue.trim().length <= 0) {
+            return {
+                ok: false,
+                message: '商を入力してください。',
+            };
+        }
+
+        if (remainderValue.trim().length <= 0) {
+            return {
+                ok: false,
+                message: '余りを入力してください。',
+            };
+        }
+
+        return {
+            ok: true,
+            message: '',
+        };
+    }
+
+    if (answerValue.trim().length <= 0) {
+        return {
+            ok: false,
+            message: '答えを入力してください。',
+        };
+    }
+
+    return {
+        ok: true,
+        message: '',
+    };
+}
+
 function buildUserInput (
     answerKind: 'number' | 'quotientRemainder',
     answerValue: string,
@@ -497,10 +720,10 @@ function buildUserInput (
     remainderValue: string
 ): string {
     if (answerKind === 'quotientRemainder') {
-        return `${quotientValue} ${remainderValue}`.trim();
+        return `${quotientValue.trim()} ${remainderValue.trim()}`.trim();
     }
 
-    return answerValue;
+    return answerValue.trim();
 }
 
 function resolveInitialInteractiveInputMode (

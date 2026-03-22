@@ -379,7 +379,7 @@ function generateDivisionQuestion (
             answerKind: 'quotientRemainder',
             correctText: `商 ${quotient} / 余り ${remainder}`,
             expectedParts: [quotient, remainder],
-            inputHint: '商と余りを半角スペース区切りで入力（例: 12 3）',
+            inputHint: '商欄と余り欄に分けて入力',
             difficultyInput,
         };
     }
@@ -472,12 +472,13 @@ function createOperand (
     allowDecimal: boolean
 ): number {
     const safeDigits = Math.max(1, digits);
+    const actualDigits = randomInt(1, safeDigits);
     const minValue = (
-        safeDigits === 1
+        actualDigits === 1
             ? 0
-            : Math.pow(10, (safeDigits - 1))
+            : Math.pow(10, (actualDigits - 1))
     );
-    const maxValue = ((Math.pow(10, safeDigits)) - 1);
+    const maxValue = ((Math.pow(10, actualDigits)) - 1);
     const integerPart = randomInt(minValue, maxValue);
 
     if (allowDecimal === false) {

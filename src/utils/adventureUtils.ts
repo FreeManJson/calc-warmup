@@ -140,10 +140,18 @@ export function buildAdventureEnemyStates (
 }
 
 export function getCurrentAdventureEnemy (
-    enemyStates: Record<AdventureStageKey, AdventureEnemyState>
+    enemyStates: Partial<Record<AdventureStageKey, AdventureEnemyState>> | null | undefined
 ): AdventureEnemyState | null {
+    if (enemyStates == null) {
+        return null;
+    }
+
     for (const stageKey of ADVENTURE_STAGE_ORDER) {
         const enemyState = enemyStates[stageKey];
+
+        if (enemyState == null) {
+            continue;
+        }
 
         if ((enemyState.unlocked === true) && (enemyState.defeated === false)) {
             return enemyState;
