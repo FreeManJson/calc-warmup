@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ADVENTURE_FEEDBACK_DELAY_MS } from '../constants/adventureConstants';
 import { useAppContext } from '../context/AppContext';
-import type { AdventureFeedbackState, AdventureStageKey } from '../types/adventureTypes';
+import type { AdventureFeedbackState, AdventureSession, AdventureStageKey } from '../types/adventureTypes';
 import type { InputMethodType } from '../types/appTypes';
 import {
     getCurrentAdventureEnemy,
@@ -90,7 +90,7 @@ export function AdventureRunPage () {
             const deltaMs = now - lastTick;
             tickTimestampRef.current = now;
 
-            setCurrentAdventure((prevAdventure) => {
+            setCurrentAdventure((prevAdventure: AdventureSession | null) => {
                 if (prevAdventure == null) {
                     return prevAdventure;
                 }
@@ -228,9 +228,16 @@ export function AdventureRunPage () {
             return;
         }
 
+        const activeAdventure = currentAdventure;
+
+        if (activeAdventure == null) {
+            navigate('/adventure');
+            return;
+        }
+
         const composedInput = buildUserInput(currentQuestion.answerKind, answerValue, quotientValue, remainderValue);
         const compared = compareAnswer(currentQuestion, composedInput);
-        const resolved = resolveAdventureAnswer(currentAdventure, {
+        const resolved = resolveAdventureAnswer(activeAdventure, {
             isCorrect: compared.isCorrect,
             isTimeout: false,
             userAnswer: compared.normalizedInput,

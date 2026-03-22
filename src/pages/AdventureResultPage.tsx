@@ -42,6 +42,10 @@ export function AdventureResultPage () {
     }
 
     function handleRetry (): void {
+        if (latestAdventureResult == null) {
+            return;
+        }
+
         const started = startAdventure(
             latestAdventureResult.dungeonId,
             latestAdventureResult.settingsSnapshot

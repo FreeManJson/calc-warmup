@@ -71,7 +71,7 @@ interface AppContextType {
     clearQuiz: () => void;
     finishQuiz: (result: QuizResult) => void;
     startAdventure: (dungeonId: string, overrideSettings?: QuizSettings) => boolean;
-    setCurrentAdventure: (nextAdventure: AdventureSession | null) => void;
+    setCurrentAdventure: (nextAdventure: SetStateAction<AdventureSession | null>) => void;
     finishAdventure: (result?: AdventureResult | null) => void;
     clearAdventureResult: () => void;
     addUser: (name: string) => AddUserResult;
@@ -371,7 +371,7 @@ export function AppProvider (
         return true;
     }, [quizSettings, selectedUserId, users]);
 
-    const setCurrentAdventure = useCallback((nextAdventure: AdventureSession | null) => {
+    const setCurrentAdventure = useCallback((nextAdventure: SetStateAction<AdventureSession | null>) => {
         setCurrentAdventureState(nextAdventure);
     }, []);
 
@@ -925,7 +925,7 @@ function normalizeAdventureSession (raw: unknown): AdventureSession | null {
         return null;
     }
 
-    return raw as AdventureSession;
+    return (raw as unknown as AdventureSession);
 }
 
 function normalizeAdventureResult (raw: unknown): AdventureResult | null {
@@ -965,7 +965,7 @@ function normalizeAdventureResult (raw: unknown): AdventureResult | null {
         return null;
     }
 
-    return raw as AdventureResult;
+    return (raw as unknown as AdventureResult);
 }
 
 function isPlainObject (value: unknown): value is Record<string, unknown> {
