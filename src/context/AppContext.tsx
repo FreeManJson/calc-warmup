@@ -148,12 +148,10 @@ export function AppProvider (
     const [currentQuiz, setCurrentQuiz] = useState<CurrentQuiz | null>(null);
     const [lastRankingEntryId, setLastRankingEntryId] = useState<string | null>(null);
     const [currentAdventure, setCurrentAdventureState] = useState<AdventureSession | null>(() => {
-        const storedAdventure = readJson<unknown>(STORAGE_KEYS.currentAdventure, null);
-        return normalizeAdventureSession(storedAdventure);
+        return readJson<AdventureSession | null>(STORAGE_KEYS.currentAdventure, null);
     });
     const [latestAdventureResult, setLatestAdventureResult] = useState<AdventureResult | null>(() => {
-        const storedResult = readJson<unknown>(STORAGE_KEYS.latestAdventureResult, null);
-        return normalizeAdventureResult(storedResult);
+        return readJson<AdventureResult | null>(STORAGE_KEYS.latestAdventureResult, null);
     });
 
     useEffect(() => {
@@ -802,10 +800,10 @@ function normalizeSelectedCourses (value: unknown): CourseType[] {
 
 function normalizeInputMethod (value: unknown): InputMethodType {
     if (isInputMethodType(value) === true) {
-        return value;
+        return 'tile';
     }
 
-    return 'auto';
+    return 'tile';
 }
 
 function isCourseType (value: unknown): value is CourseType {
@@ -877,97 +875,4 @@ function writeJson (key: string, value: unknown): void {
     } catch {
         // 何もしない
     }
-}
-
-
-function normalizeAdventureSession (raw: unknown): AdventureSession | null {
-    if (isPlainObject(raw) === false) {
-        return null;
-    }
-
-    if (typeof raw.id !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.userId !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.userName !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.dungeonId !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.dungeonName !== 'string') {
-        return null;
-    }
-
-    if (isPlainObject(raw.settingsSnapshot) === false) {
-        return null;
-    }
-
-    if (isPlainObject(raw.preview) === false) {
-        return null;
-    }
-
-    if (isPlainObject(raw.enemyStates) === false) {
-        return null;
-    }
-
-    if (Array.isArray(raw.defeatedStages) === false) {
-        return null;
-    }
-
-    if (Array.isArray(raw.battleLog) === false) {
-        return null;
-    }
-
-    return (raw as unknown as AdventureSession);
-}
-
-function normalizeAdventureResult (raw: unknown): AdventureResult | null {
-    if (isPlainObject(raw) === false) {
-        return null;
-    }
-
-    if (typeof raw.userId !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.userName !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.dungeonId !== 'string') {
-        return null;
-    }
-
-    if (typeof raw.dungeonName !== 'string') {
-        return null;
-    }
-
-    if (isPlainObject(raw.settingsSnapshot) === false) {
-        return null;
-    }
-
-    if (isPlainObject(raw.preview) === false) {
-        return null;
-    }
-
-    if (Array.isArray(raw.defeatedStages) === false) {
-        return null;
-    }
-
-    if (Array.isArray(raw.battleLog) === false) {
-        return null;
-    }
-
-    return (raw as unknown as AdventureResult);
-}
-
-function isPlainObject (value: unknown): value is Record<string, unknown> {
-    return ((typeof value === 'object') && (value != null));
 }

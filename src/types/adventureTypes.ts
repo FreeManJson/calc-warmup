@@ -101,6 +101,7 @@ export interface AdventureSession {
     failed: boolean;
     enemyStates: Record<AdventureStageKey, AdventureEnemyState>;
     currentQuestion: GeneratedQuestion | null;
+    upcomingQuestions: GeneratedQuestion[];
     battleLog: AdventureBattleLogEntry[];
 }
 

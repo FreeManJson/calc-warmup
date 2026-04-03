@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_TERMS } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
-import type { InputMethodType, QuizSettings } from '../types/appTypes';
+import type { QuizSettings } from '../types/appTypes';
 
 export function SettingsPage () {
     const navigate = useNavigate();
@@ -100,14 +100,6 @@ export function SettingsPage () {
         return (/^\d*$/.test(value) === true);
     }
 
-    function updateInputMethod (inputMethod: InputMethodType): void {
-        setQuizSettings((prev) => {
-            return {
-                ...prev,
-                inputMethod,
-            };
-        });
-    }
 
     return (
         <div className="page-container">
@@ -250,41 +242,8 @@ export function SettingsPage () {
 
             <section className="card">
                 <h2>入力方式</h2>
-
-                <div className="segmented-row">
-                    <button
-                        type="button"
-                        className={`segmented-button ${quizSettings.inputMethod === 'auto' ? 'is-selected' : ''}`}
-                        onClick={() => {
-                            updateInputMethod('auto');
-                        }}
-                    >
-                        自動
-                    </button>
-
-                    <button
-                        type="button"
-                        className={`segmented-button ${quizSettings.inputMethod === 'keyboard' ? 'is-selected' : ''}`}
-                        onClick={() => {
-                            updateInputMethod('keyboard');
-                        }}
-                    >
-                        キーボード優先
-                    </button>
-
-                    <button
-                        type="button"
-                        className={`segmented-button ${quizSettings.inputMethod === 'tile' ? 'is-selected' : ''}`}
-                        onClick={() => {
-                            updateInputMethod('tile');
-                        }}
-                    >
-                        数字タイル優先
-                    </button>
-                </div>
-
                 <p className="sub-text">
-                    自動: PC はキーボード寄り、スマホは数字タイル寄りで開始します。
+                    この版では入力方式を数字タイル固定にしています。出題画面ではキーボード切り替えを表示しません。
                 </p>
             </section>
 

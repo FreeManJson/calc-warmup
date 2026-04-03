@@ -140,18 +140,10 @@ export function buildAdventureEnemyStates (
 }
 
 export function getCurrentAdventureEnemy (
-    enemyStates: Partial<Record<AdventureStageKey, AdventureEnemyState>> | null | undefined
+    enemyStates: Record<AdventureStageKey, AdventureEnemyState>
 ): AdventureEnemyState | null {
-    if (enemyStates == null) {
-        return null;
-    }
-
     for (const stageKey of ADVENTURE_STAGE_ORDER) {
         const enemyState = enemyStates[stageKey];
-
-        if (enemyState == null) {
-            continue;
-        }
 
         if ((enemyState.unlocked === true) && (enemyState.defeated === false)) {
             return enemyState;
@@ -177,6 +169,8 @@ export function createAdventureSession (
     const preview = buildAdventureDungeonPreview(settings, theme, dungeonId);
     const enemyStates = buildAdventureEnemyStates(dungeon, preview);
 
+    const queue = generateAdventureQuestionQueue(settings, 3);
+
     return {
         id: `adventure-${Date.now()}`,
         userId,
@@ -199,18 +193,27 @@ export function createAdventureSession (
         cleared: false,
         failed: false,
         enemyStates,
-        currentQuestion: generateAdventureQuestion(settings),
+        currentQuestion: queue[0] ?? null,
+        upcomingQuestions: queue.slice(1),
         battleLog: [],
     };
 }
 
 export function generateAdventureQuestion (settings: QuizSettings): GeneratedQuestion | null {
-    const questions = generateQuestions({
-        ...settings,
-        questionCount: 1,
-    });
+    const questions = generateAdventureQuestionQueue(settings, 1);
 
     return questions[0] ?? null;
+}
+
+export function generateAdventureQuestionQueue (
+    settings: QuizSettings,
+    count: number
+): GeneratedQuestion[] {
+    const safeCount = Math.max(1, Math.floor(count));
+    return generateQuestions({
+        ...settings,
+        questionCount: safeCount,
+    });
 }
 
 export function tickAdventureSession (
@@ -269,11 +272,32 @@ export function resolveAdventureAnswer (
     }
 
     const damage = payload.isCorrect === true ? session.preview.attackPower : 0;
+    const safeUpcomingQuestions = Array.isArray(session.upcomingQuestions)
+        ? session.upcomingQuestions
+        : [];
     const afterDamage = applyAdventureDamage(
         session.enemyStates,
         damage,
         session.totalElapsedMs
     );
+
+    let nextQuestion: GeneratedQuestion | null = session.currentQuestion;
+    let nextUpcomingQuestions: GeneratedQuestion[] = safeUpcomingQuestions;
+
+    if (payload.isCorrect === true) {
+        const shiftedUpcoming = safeUpcomingQuestions.slice(1);
+        const replenishedQuestion = generateAdventureQuestion(session.settingsSnapshot);
+
+        nextQuestion = safeUpcomingQuestions[0] ?? replenishedQuestion;
+        nextUpcomingQuestions = replenishedQuestion != null
+            ? [...shiftedUpcoming, replenishedQuestion]
+            : shiftedUpcoming;
+    }
+
+    if ((afterDamage.cleared === true) || (session.failed === true)) {
+        nextQuestion = null;
+        nextUpcomingQuestions = [];
+    }
 
     const nextEnemy = getCurrentAdventureEnemy(afterDamage.enemyStates);
     const answeredCount = (session.questionIndex + 1);
@@ -289,11 +313,8 @@ export function resolveAdventureAnswer (
         cleared: afterDamage.cleared,
         failed: session.failed,
         enemyStates: afterDamage.enemyStates,
-        currentQuestion: (
-            afterDamage.cleared === true
-                ? null
-                : generateAdventureQuestion(session.settingsSnapshot)
-        ),
+        currentQuestion: nextQuestion,
+        upcomingQuestions: nextUpcomingQuestions,
         battleLog: [
             ...session.battleLog,
             buildBattleLogEntry(
