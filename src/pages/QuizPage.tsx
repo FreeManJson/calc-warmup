@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { QuestionStackBoard } from '../components/QuestionStackBoard';
 import { TileAnswerPanel } from '../components/TileAnswerPanel';
-import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
 import type { AnswerResult } from '../types/appTypes';
 import {
@@ -472,32 +472,6 @@ export function QuizPage () {
         navigate('/');
     }
 
-    const handleDismissFeedback = useCallback((): void => {
-        if (pendingFeedbackAnswers == null) {
-            return;
-        }
-
-        goToNextQuestionOrFinish(pendingFeedbackAnswers);
-    }, [pendingFeedbackAnswers, goToNextQuestionOrFinish]);
-
-    useEffect(() => {
-        if ((phase !== 'feedback') || (feedbackKind == null)) {
-            return;
-        }
-
-        const delayMs = (feedbackKind === 'timeout')
-            ? FEEDBACK_DELAY_MS.timeout
-            : FEEDBACK_DELAY_MS.wrong;
-
-        const timerId = window.setTimeout(() => {
-            handleDismissFeedback();
-        }, delayMs);
-
-        return () => {
-            window.clearTimeout(timerId);
-        };
-    }, [phase, feedbackKind, handleDismissFeedback]);
-
     function appendTileValue (text: string): void {
         if ((phase !== 'active') || (paused === true)) {
             return;
@@ -599,6 +573,33 @@ export function QuizPage () {
         }
     }
 
+
+    const handleDismissFeedback = useCallback((): void => {
+        if (pendingFeedbackAnswers == null) {
+            return;
+        }
+
+        goToNextQuestionOrFinish(pendingFeedbackAnswers);
+    }, [pendingFeedbackAnswers, goToNextQuestionOrFinish]);
+
+    useEffect(() => {
+        if ((phase !== 'feedback') || (feedbackKind == null)) {
+            return;
+        }
+
+        const delayMs = (feedbackKind === 'timeout')
+            ? FEEDBACK_DELAY_MS.timeout
+            : FEEDBACK_DELAY_MS.wrong;
+
+        const timerId = window.setTimeout(() => {
+            handleDismissFeedback();
+        }, delayMs);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [phase, feedbackKind, handleDismissFeedback]);
+
     if ((currentQuiz == null) || (currentQuestion == null)) {
         return (
             <div className="page-container">
@@ -699,9 +700,7 @@ export function QuizPage () {
                         animationKind={feedbackKind}
                     />
 
-                    {currentQuestion.inputHint != null && (
-                        <p className="sub-text top-gap">{currentQuestion.inputHint}</p>
-                    )}
+                    <p className="sub-text top-gap">左端がいま解く問題です。{currentQuestion.inputHint != null ? ` ${currentQuestion.inputHint}` : ''}</p>
 
                     <div className="top-gap">
                         <TileAnswerPanel
@@ -752,17 +751,6 @@ export function QuizPage () {
                         {feedbackSubText.length > 0 && (
                             <div className="feedback-detail">{feedbackSubText}</div>
                         )}
-
-                        <div className="button-row top-gap feedback-action-row">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    handleDismissFeedback();
-                                }}
-                            >
-                                {((currentIndex + 1) >= totalQuestions) ? '結果を見る' : '次へ'}
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}

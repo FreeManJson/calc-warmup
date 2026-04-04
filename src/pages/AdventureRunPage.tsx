@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { QuestionStackBoard } from '../components/QuestionStackBoard';
 import { TileAnswerPanel } from '../components/TileAnswerPanel';
-import { FEEDBACK_DELAY_MS } from '../constants/appConstants';
 import { useAppContext } from '../context/AppContext';
 import type { AdventureFeedbackState } from '../types/adventureTypes';
 import { getCurrentAdventureEnemy, resolveAdventureAnswer, tickAdventureSession } from '../utils/adventureUtils';
@@ -128,6 +128,41 @@ export function AdventureRunPage () {
         };
     }, [currentAdventure, feedback, setCurrentAdventure]);
 
+    const handleDismissFeedback = useCallback((): void => {
+        if (feedback == null) {
+            return;
+        }
+
+        if (pendingResult != null) {
+            finishAdventure(pendingResult);
+            setPendingResult(null);
+            setFeedback(null);
+            navigate('/adventure/result');
+            return;
+        }
+
+        setFeedback(null);
+        tickTimestampRef.current = Date.now();
+    }, [feedback, pendingResult, finishAdventure, navigate]);
+
+    useEffect(() => {
+        if (feedback == null) {
+            return;
+        }
+
+        const delayMs = (feedback.kind === 'timeout')
+            ? FEEDBACK_DELAY_MS.timeout
+            : FEEDBACK_DELAY_MS.wrong;
+
+        const timerId = window.setTimeout(() => {
+            handleDismissFeedback();
+        }, delayMs);
+
+        return () => {
+            window.clearTimeout(timerId);
+        };
+    }, [feedback, handleDismissFeedback]);
+
     if (currentAdventure == null) {
         return null;
     }
@@ -176,41 +211,6 @@ export function AdventureRunPage () {
         setFeedback(resolved.feedback);
         setPendingResult(resolved.result);
     }
-
-    const handleDismissFeedback = useCallback((): void => {
-        if (feedback == null) {
-            return;
-        }
-
-        if (pendingResult != null) {
-            finishAdventure(pendingResult);
-            setPendingResult(null);
-            setFeedback(null);
-            navigate('/adventure/result');
-            return;
-        }
-
-        setFeedback(null);
-        tickTimestampRef.current = Date.now();
-    }, [feedback, pendingResult, finishAdventure, navigate]);
-
-    useEffect(() => {
-        if (feedback == null) {
-            return;
-        }
-
-        const delayMs = (feedback.kind === 'timeout')
-            ? FEEDBACK_DELAY_MS.timeout
-            : FEEDBACK_DELAY_MS.wrong;
-
-        const timerId = window.setTimeout(() => {
-            handleDismissFeedback();
-        }, delayMs);
-
-        return () => {
-            window.clearTimeout(timerId);
-        };
-    }, [feedback, handleDismissFeedback]);
 
     function handleRetreat (): void {
         const confirmed = window.confirm('現在のプレイを破棄してコース選択へ戻ります。よろしいですか？');
@@ -316,7 +316,7 @@ export function AdventureRunPage () {
                     <div>
                         <h1>{currentAdventure.dungeonName}</h1>
                         <p className="sub-text hero-subtext">
-                            まちがえたら同じブロックに再挑戦。正解するとブロックを壊して次へ進みます。
+                            左端のブロックが今の問題です。まちがえたら同じブロックに再挑戦し、正解すると壊して次へ進みます。
                         </p>
                     </div>
 
@@ -403,17 +403,6 @@ export function AdventureRunPage () {
                             <span className="feedback-equation-answer">{feedback.correctAnswerText}</span>
                         </div>
                         <div className="feedback-detail">{feedback.subText}</div>
-
-                        <div className="button-row top-gap feedback-action-row">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    handleDismissFeedback();
-                                }}
-                            >
-                                {pendingResult != null ? '結果を見る' : 'もう一度'}
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}
